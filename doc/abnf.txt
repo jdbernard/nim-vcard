@@ -1,0 +1,117 @@
+ABNF for 3.0:
+=============
+
+   vcard_entity = 1*(vcard)
+
+   vcard        = [group "."] "BEGIN" ":" "VCARD" 1*CRLF
+                  1*(contentline)
+        ;A vCard object MUST include the VERSION, FN and N types.
+                  [group "."] "END" ":" "VCARD" 1*CRLF
+
+   contentline  = [group "."] name *(";" param) ":" value CRLF
+      ; When parsing a content line, folded lines MUST first
+      ; be unfolded according to the unfolding procedure
+      ; described above.
+      ; When generating a content line, lines longer than 75
+      ; characters SHOULD be folded according to the folding
+      ; procedure described above.
+
+   group        = 1*(ALPHA / DIGIT / "-")
+
+   name         = x-name / iana-token
+
+   iana-token   = 1*(ALPHA / DIGIT / "-")
+      ; identifier registered with IANA
+
+   x-name       = "x-" 1*(ALPHA / DIGIT / "-")
+      ; Names that begin with "x-" or "X-" are
+      ; reserved for experimental use, not intended for released
+      ; products, or for use in bilateral agreements.
+
+   param        = param-name "=" param-value *("," param-value)
+
+   param-name   = x-name / iana-token
+
+   param-value  = ptext / quoted-string
+
+   ptext  = *SAFE-CHAR
+
+   value = *VALUE-CHAR
+         / valuespec      ; valuespec defined in section 5.8.4
+
+   quoted-string = DQUOTE *QSAFE-CHAR DQUOTE
+
+   NON-ASCII    = %x80-FF
+      ; use restricted by charset parameter
+      ; on outer MIME object (UTF-8 preferred)
+
+   QSAFE-CHAR   = WSP / %x21 / %x23-7E / NON-ASCII
+      ; Any character except CTLs, DQUOTE
+
+   SAFE-CHAR    = WSP / %x21 / %x23-2B / %x2D-39 / %x3C-7E / NON-ASCII
+      ; Any character except CTLs, DQUOTE, ";", ":", ","
+
+   VALUE-CHAR   = WSP / VCHAR / NON-ASCII
+      ; any textual character
+
+
+ABNF for 4.0:
+=============
+
+   vcard-entity = 1*vcard
+
+   vcard = "BEGIN:VCARD" CRLF
+           "VERSION:4.0" CRLF
+           1*contentline
+           "END:VCARD" CRLF
+     ; A vCard object MUST include the VERSION and FN properties.
+     ; VERSION MUST come immediately after BEGIN:VCARD.
+
+   contentline = [group "."] name *(";" param) ":" value CRLF
+     ; When parsing a content line, folded lines must first
+     ; be unfolded according to the unfolding procedure
+     ; described in Section 3.2.
+     ; When generating a content line, lines longer than 75
+     ; characters SHOULD be folded according to the folding
+     ; procedure described in Section 3.2.
+
+   group = 1*(ALPHA / DIGIT / "-")
+   name  = "SOURCE" / "KIND" / "FN" / "N" / "NICKNAME"
+         / "PHOTO" / "BDAY" / "ANNIVERSARY" / "GENDER" / "ADR" / "TEL"
+         / "EMAIL" / "IMPP" / "LANG" / "TZ" / "GEO" / "TITLE" / "ROLE"
+         / "LOGO" / "ORG" / "MEMBER" / "RELATED" / "CATEGORIES"
+         / "NOTE" / "PRODID" / "REV" / "SOUND" / "UID" / "CLIENTPIDMAP"
+         / "URL" / "KEY" / "FBURL" / "CALADRURI" / "CALURI" / "XML"
+         / iana-token / x-name
+     ; Parsing of the param and value is based on the "name" as
+     ; defined in ABNF sections below.
+     ; Group and name are case-insensitive.
+
+   iana-token = 1*(ALPHA / DIGIT / "-")
+     ; identifier registered with IANA
+
+   x-name = "x-" 1*(ALPHA / DIGIT / "-")
+     ; Names that begin with "x-" or "X-" are
+     ; reserved for experimental use, not intended for released
+     ; products, or for use in bilateral agreements.
+
+   param = language-param / value-param / pref-param / pid-param
+         / type-param / geo-parameter / tz-parameter / sort-as-param
+         / calscale-param / any-param
+     ; Allowed parameters depend on property name.
+
+   param-value = *SAFE-CHAR / DQUOTE *QSAFE-CHAR DQUOTE
+
+   any-param  = (iana-token / x-name) "=" param-value *("," param-value)
+
+   NON-ASCII = UTF8-2 / UTF8-3 / UTF8-4
+     ; UTF8-{2,3,4} are defined in [RFC3629]
+
+   QSAFE-CHAR = WSP / "!" / %x23-7E / NON-ASCII
+     ; Any character except CTLs, DQUOTE
+
+   SAFE-CHAR = WSP / "!" / %x23-39 / %x3C-7E / NON-ASCII
+     ; Any character except CTLs, DQUOTE, ";", ":"
+
+   VALUE-CHAR = WSP / VCHAR / NON-ASCII
+     ; Any textual character

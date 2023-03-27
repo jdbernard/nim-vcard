@@ -7,6 +7,6 @@
 
 import unittest
 
-import nim_vcard
+import vcard3
 test "can add":
-  check add(5, 5) == 10
+  check 5 + 5 == 10

@@ -1,0 +1,47 @@
+Lines 1863-1868:
+
+>   ;For name="REV"
+>   param        = ["VALUE" =" "date-time"]
+>        ; Only value parameters allowed. Values are case insensitive.
+>
+>   param        =/ "VALUE" =" "date"
+>        ; Only value parameters allowed. Values are case insensitive.
+
+"VALUE" =" should be "VALUE" "="
+
+----
+Lines
+
+According to section 3.4.1, the TZ type uses the utc-offset-value by default,
+but can be reset to use the text type (see example on lines 885-886).
+
+The ABNF in section 4 disallows this (lines 1766-1771):
+
+>   ;For name="TZ"
+>   param        = ""
+>        ; No parameters allowed
+>
+>   value        = utc-offset-value
+
+If the description and example in section 3.4.1 is intended behavior, this
+should probably read
+
+>   ;For name="TZ"
+>   param        = tz-utc-offset-param
+>
+>   param        =/ tz-text-param
+>
+>   value        = tz-utc-offset-value
+>       ; Value and parameter MUST match
+>
+>   value        =/ tz-text-value
+>       ; Value and parameter MUST match
+>
+>   tz-utc-offset-param = ""
+>       ; No parameters allowed
+>
+>   tz-text-param = "VALUE" "=" "text"
+>
+>   tz-utc-offset-value = utc-offset-value
+>
+>   tz-text-value = text-value
