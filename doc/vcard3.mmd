@@ -1,0 +1,23 @@
+stateDiagram-v2
+  [*] --> StartVCard
+  StartVCard --> ContentLine: "BEGIN VCARD" CRLF
+  ContentLine --> EndVCard: "END VCARD" CRLF
+  ContentLine --> Name
+  Name --> Name: 0-9/a-z/-/.
+  Name --> Param: SEMICOLON
+  Name --> Value: COLON
+  Param --> Value: COLON
+  Value --> ContentLine: CRLF
+
+  state Param {
+    [*] --> ParamName
+    ParamName --> ParamName: 0-9/a-z/-/.
+    ParamName --> ParamValue: "="
+    ParamValue --> ParamValue: ","
+    ParamValue --> PText
+    ParamValue --> Quoted
+    PText --> PText: SAFE-CHAR
+    PText --> [*]
+    Quoted --> Quoted: QSAFE-CHAR
+    Quoted --> [*]
+  }
