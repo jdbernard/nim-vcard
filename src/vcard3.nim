@@ -9,10 +9,10 @@
 ## [rfc2426]: https://tools.ietf.org/html/rfc2426
 ## [rfc6350]: https://tools.ietf.org/html/rfc6350
 
-import std/base64, std/lexbase, std/macros, std/options, std/sequtils,
-  std/streams, std/strutils, std/times
+import std/[base64, lexbase, macros, options, sequtils, streams, strutils,
+            times, unicode]
 
-import vcard/private/util
+import vcard/private/[util, lexer]
 
 type
 #[
@@ -221,6 +221,7 @@ type
     nextContentId: int
     content*: seq[VC3_Content]
 
+const CRLF = "\r\n"
 const DATE_FMT = "yyyy-MM-dd"
 const DATETIME_FMT = "yyyy-MM-dd'T'HH:mm:sszz"
 
@@ -251,11 +252,6 @@ macro assignFields(assign: untyped, fields: varargs[untyped]): untyped =
 
 # Initializers
 # =============================================================================
-
-func clone(vc3: VCard3): VCard3 =
-  result = VCard3(
-    nextContentId: vc3.nextContentId,
-    content: vc3.content)
 
 func newVC3_Name*(value: string, group = none[string]()): VC3_Name =
   return VC3_Name(name: "NAME", value: value, group: group)
@@ -434,21 +430,23 @@ func newVC3_Org*(
   value: seq[string],
   isPText = false,
   language = none[string](),
-  xParams: seq[VC3_XParam] = @[]): VC3_Org =
+  xParams: seq[VC3_XParam] = @[],
+  group = none[string]()): VC3_Org =
 
   return assignFields(
     VC3_Org(name: "ORG"),
-    value, isPText, language, xParams)
+    value, isPText, language, xParams, group)
 
 func newVC3_Categories*(
   value: seq[string],
   isPText = false,
   language = none[string](),
-  xParams: seq[VC3_XParam] = @[]): VC3_Categories =
+  xParams: seq[VC3_XParam] = @[],
+  group = none[string]()): VC3_Categories =
 
   return assignFields(
     VC3_Categories(name: "CATEGORIES"),
-    value, isPText, language, xParams)
+    value, isPText, language, xParams, group)
 
 func newVC3_Note*(
   value: string,
@@ -688,6 +686,7 @@ func updateOrAdd*[T](vc3: var VCard3, content: seq[T]): VCard3 =
     if existingIdx < 0: vc3.content.add(c)
     else: c.content[existingIdx] = c
 
+#[
 func setName*(vc3: var VCard3, name: string, group = none[string]()): void =
   var name = newVC3_Name(name, group)
   vc3.setContent(name)
@@ -1074,12 +1073,81 @@ func addLogo*(
   result = vc3
   result.addLogo(logo, valueType, binaryType, isInline, group)
 
-func setAgent
+func setAgent*(
+  vc3: var VCard3,
+  agent: string,
+  isInline = true,
+  group = none[string]()): void =
+
+  var c = newVC3_Agent(agent, isInline, group)
+  vc3.add(c)
+
+func setAgent*(
+  vc3: VCard3,
+  agent: string,
+  isInline = true,
+  group = none[string]()): VCard3 =
+
+  result = vc3
+  result.setAgent(agent, isInline, group)
+
+func setOrg*(
+  vc3: var VCard3,
+  org: seq[string],
+  isPText = false,
+  language = none[string](),
+  xParams: seq[VC3_XParam] = @[],
+  group = none[string]()): void =
+
+  var c = newVC3_Org(org, isPText, language, xParams, group)
+  vc3.setContent(c)
+
+func setOrg*(
+  vc3: VCard3,
+  org: seq[string],
+  isPText = false,
+  language = none[string](),
+  xParams: seq[VC3_XParam] = @[],
+  group = none[string]()): VCard3 =
+
+  result = vc3
+  result.setOrg(org, isPText, language, xParams, group)
+
+func setCategories*(
+  vc3: var VCard3,
+  categories: seq[string],
+  isPText = false,
+  language = none[string](),
+  xParams: seq[VC3_XParam] = @[],
+  group = none[string]()): void =
+
+  var c = newVC3_Categories(categories, isPText, language, xParams, group)
+  vc3.setContent(c)
+
+func setCategories*(
+  vc3: VCard3,
+  categories: seq[string],
+  isPText = false,
+  language = none[string](),
+  xParams: seq[VC3_XParam] = @[],
+  group = none[string]()): VCard3 =
+
+  result = vc3
+  result.setCategories(categories, isPText, language, xParams, group)
+
+func addNote(
+  vc3: VCard3,
+  value: string,
+  language = none[string](),
+  isPText = false,
+  xParams: seq[VC3_XParam] = @[],
+  group = none[string]()): VCard3 =
+
+  var c = newVC3_Note(value, language, isPText, xParams, group)
+  vc3.add(c)
+]#
 #[
 # TODO
-agent
-org
-categories
 note
 prodid
 rev
@@ -1241,8 +1309,151 @@ proc serialize(c: VC3_Content): string =
     return serialize(cast[VC3_BinaryContent](c))
 
 proc `$`*(vc3: VCard3): string =
-  result = "BEGIN:vCard\r\n"
-  result &= "VERSION:3.0\r\n"
+  result = "BEGIN:vCard" & CRLF
+  result &= "VERSION:3.0" & CRLF
   for c in vc3.content.filterIt(not (it of VC3_Version)):
-    result &= foldContentLine(serialize(c)) & "\r\n"
-  result &= "END:vCard\r\n"
+    result &= foldContentLine(serialize(c)) & CRLF
+  result &= "END:vCard" & CRLF
+
+
+# Parsing
+# =============================================================================
+
+type
+  VC3_ParseEvent = enum
+    peStart,
+    peContentLine,
+    peName,
+    peParam,
+    peParamName,
+    peParamValue,
+    prPText,
+    peQuoted,
+    peSafeChar,
+    peQSafeChar,
+    peValue,
+    peEnd
+
+  VC3Parser = object of VCardLexer
+    filename: string
+    state: seq[VC3_ParseEvent]
+
+  VCard3ParsingError = object of ValueError
+
+const NON_ASCII = { '\x80'..'\xFF' }
+const WSP = {' ', '\t'}
+const SAFE_CHARS = WSP + { '\x21', '\x23'..'\x2B', '\x2D'..'\x39', '\x3C'..'\x7E' } + NON_ASCII
+const QSAFE_CHARS = WSP + { '\x21', '\x23'..'\x7E' } + NON_ASCII
+const VALUE_CHAR = WSP + { '\x21'..'\x7E' } + NON_ASCII
+const ALPHA_NUM = { 'a'..'z', 'A'..'Z', '0'..'9' }
+const NAME_CHARS = { 'a'..'z', 'A'..'Z', '0'..'9' }
+
+proc error(p: VC3Parser, msg: string) =
+  raise newException(VCard3ParsingError, "$1($2, $3) Error: $4] " %
+    [ p.filename, $p.lineNumber, $p.getColNumber(p.pos), msg ])
+
+proc readGroup(p: var VC3Parser): Option[string] =
+  p.setBookmark
+
+  var ch = p.read
+  while ALPHA_NUM.contains(ch): ch = p.read
+
+  if (ch == '.'):
+    p.unsetBookmark
+    return some(readSinceBookmark(p)[0..^1])
+  else:
+    p.returnToBookmark
+    return none[string]()
+
+proc readName(p: var VC3Parser): string =
+  while ALPHA_
+
+proc expect(p: var VC3Parser, expected: string, caseSensitive = false) =
+  p.setBookmark
+
+  if caseSensitive:
+    for ch in expected:
+      if p.read != ch:
+        p.error("expected '$1' but found '$2'" %
+          [expected, p.readSinceBookmark])
+
+  else:
+    for rune in expected.runes:
+      if p.readRune.toLower != rune.toLower:
+        p.error("expected '$1' but found '$2'" %
+          [ expected, p.readSinceBookmark ])
+
+  p.unsetBookmark
+
+proc skip(p: var VC3Parser, expected: string, caseSensitive = false): bool =
+  p.setBookmark
+  if caseSensitive:
+    for ch in expected:
+      if p.read != ch:
+        p.returnToBookmark
+        return false
+
+  else:
+    for rune in expected.runes:
+      if p.readRune.toLower != rune.toLower:
+        p.returnToBookmark
+        return false
+
+  p.unsetBookmark
+  return true
+
+proc parseContentLines(p: var VC3Parser): seq[VC3_Content] =
+  while true:
+    let group = p.readGroup
+    let name = p.readName
+    if name.toLower == "end":
+      p.expect(":VCARD\r\n")
+      break
+
+
+proc parseVCard3*(input: Stream, filename = "input"): seq[VCard3] =
+  var p: VC3Parser
+  lexer.open(p, input)
+  p.state = @[peStart]
+
+  discard p.readGroup
+  p.expect("begin:vcard")
+  while (p.skip("\r\n", true)): discard
+
+
+
+proc parseVCard3*(content: string, filename = "input"): seq[VCard3] =
+  parseVCard3(newStringStream(content), filename)
+
+proc parseVCard3File*(filepath: string): seq[VCard3] =
+  parseVCard3(newFileStream(filepath, fmRead), filepath)
+
+#[
+Simplified Parsing Diagram
+
+```mermaid
+stateDiagram-v2
+  [*] --> StartVCard
+  StartVCard --> ContentLine: "BEGIN VCARD" CRLF
+  ContentLine --> EndVCard: "END VCARD" CRLF
+  ContentLine --> Name
+  Name --> Name: 0-9/a-z/-/.
+  Name --> Param: SEMICOLON
+  Name --> Value: COLON
+  Param --> Value: COLON
+  Value --> ContentLine: CRLF
+
+  state Param {
+    [*] --> ParamName
+    ParamName --> ParamName: 0-9/a-z/-/.
+    ParamName --> ParamValue: "="
+    ParamValue --> ParamValue: ","
+    ParamValue --> PText
+    ParamValue --> Quoted
+    PText --> PText: SAFE-CHAR
+    PText --> [*]
+    Quoted --> Quoted: QSAFE-CHAR
+    Quoted --> [*]
+  }
+```
+]#
