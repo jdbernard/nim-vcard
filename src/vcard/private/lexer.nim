@@ -1,4 +1,4 @@
-import std/[streams, unicode]
+import std/[streams, unicode, unittest]
 
 type VCardLexer* = object of RootObj
   input: Stream
@@ -145,3 +145,17 @@ proc peekRune*(vcl: var VCardLexer): Rune =
 proc getColNumber*(vcl: VCardLexer, pos: int): int =
   if vcl.lineStart < pos: return pos - vcl.lineStart
   else: return (vcl.buffer.len - vcl.lineStart) + pos
+
+
+suite "vcard/lexer":
+
+  func expectBfr(l: VCardLexer, s: string): bool =
+    for i in 0..<s.len:
+      if s[i] != l.buffer[i]:
+        return false
+    return true
+
+  test "can open and fill buffer":
+    var l: VCardLexer
+    l.open(newStringStream("test"))
+    check l.expectBfr("test")
