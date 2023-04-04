@@ -1,23 +1,31 @@
-import std/[streams, unicode, unittest]
+import std/[streams, unicode]
 
 type VCardLexer* = object of RootObj
   input: Stream
 
-  pos*: int         # current read position
-  bookmark*: int    # bookmark to support rewind functionality
-  buffer*: string   # buffer of bytes read
-  lineNumber*: int  # how many newlines have we seen so far
-  lineStart: int    # index into the buffer for the start of the current line
-
-  bufStart: int     # starting boundary for the buffer
-  bufEnd: int       # ending boundary for the buffer
+  buffer*: string       # buffer of bytes read
+  bufStart: int         # starting boundary for the buffer
+  bufEnd: int           # ending boundary for the buffer
+  pos*: int             # current read position
+  bookmark*: int        # bookmark to support rewind functionality
+  bookmarkVal*: string  # value that has been read since the bookmark was set
+  lineNumber*: int      # how many newlines have we seen so far
+  lineStart: int        # index into the buffer for the start of the current line
 
 proc skipUtf8Bom(vcl: var VCardLexer) =
   if (vcl.buffer[0] == '\xEF') and (vcl.buffer[1] == '\xBB') and (vcl.buffer[2] == '\xBF'):
     inc(vcl.pos, 3)
 
+template wrappedIdx(idx: untyped): int = idx mod vcl.buffer.len
+
 proc newStartIdx(vcl: VCardLexer): int =
   if vcl.bookmark > 0: vcl.bookmark else: vcl.pos
+
+func isFull(vcl: VCardLexer): bool {.inline.} =
+  return wrappedIdx(vcl.bufEnd + 1) == vcl.newStartIdx
+
+func atEnd(vcl: VCardLexer): bool {.inline.} =
+  vcl.pos == vcl.bufEnd
 
 proc doubleBuffer(vcl: var VCardLexer) =
   let oldBuf = vcl.buffer
@@ -42,21 +50,32 @@ proc fillBuffer(vcl: var VCardLexer) =
   var charsRead: int
 
   # check to see if we have a full buffer
-  if (vcl.bufStart == 0 and vcl.bufEnd == vcl.buffer.len) or
-     vcl.bufEnd == vcl.bufStart - 1:
-    vcl.doubleBuffer()
+  if vcl.isFull: vcl.doubleBuffer()
 
   # discard used portions of the buffer
   vcl.bufStart = vcl.newStartIdx
 
   if vcl.bufEnd < vcl.bufStart:
-    charsRead = vcl.input.readDataStr(vcl.buffer, vcl.bufEnd ..< vcl.bufStart)
+    #     e       s
+    # 0 1 2 3 4 5 6 7 8 9
+    charsRead = vcl.input.readDataStr(vcl.buffer,
+      vcl.bufEnd ..< (vcl.bufStart - 1))
     vcl.bufEnd += charsRead
+
+  elif vcl.bufStart == 0:
+    # s           e
+    # 0 1 2 3 4 5 6 7 8 9
+    charsRead = vcl.input.readDataStr(vcl.buffer,
+      vcl.bufEnd ..< (vcl.buffer.len - 1))
+    vcl.bufEnd = wrappedIdx(vcl.bufEnd + charsRead)
+
   else:
-    charsRead = vcl.input.readDataStr(vcl.buffer, vcl.bufEnd ..< vcl.buffer.len)
-    vcl.bufEnd += charsRead
+    #     s       e
+    # 0 1 2 3 4 5 6 7 8 9
+    charsRead = vcl.input.readDataStr(vcl.buffer, vcl.bufEnd..<vcl.buffer.len)
     if charsRead == vcl.buffer.len - vcl.bufEnd:
-      vcl.bufEnd = vcl.input.readDataStr(vcl.buffer, 0 ..< vcl.bufStart)
+      vcl.bufEnd = vcl.input.readDataStr(vcl.buffer, 0 ..< (vcl.bufStart - 1))
+
 
 proc close*(vcl: var VCardLexer) = vcl.input.close
 
@@ -67,6 +86,8 @@ proc open*(vcl: var VCardLexer, input: Stream, bufLen = 16384) =
   vcl.pos = 0
   vcl.bookmark = -1
   vcl.buffer = newString(bufLen)
+  vcl.bufStart = 0
+  vcl.bufEnd = 0
   vcl.lineNumber = 0
   vcl.lineStart = 0
   vcl.fillBuffer
@@ -74,6 +95,7 @@ proc open*(vcl: var VCardLexer, input: Stream, bufLen = 16384) =
 
 proc setBookmark*(vcl: var VCardLexer) =
   vcl.bookmark = vcl.pos
+  vcl.bookmarkVal = newStringOfCap(32)
 
 proc returnToBookmark*(vcl: var VCardLexer) =
   vcl.pos = vcl.bookmark
@@ -83,11 +105,21 @@ proc unsetBookmark*(vcl: var VCardLexer) =
   vcl.bookmark = -1
 
 proc readSinceBookmark*(vcl: var VCardLexer): string =
+  return vcl.bookmarkVal
+#[
   if vcl.pos < vcl.bookmark:
-    vcl.buffer[vcl.bookmark ..< vcl.buffer.len] & vcl.buffer[0 ..< vcl.pos]
-  else: vcl.buffer[vcl.pos ..< vcl.bookmark]
+    #     p e   s b
+    # 0 1 2 3 4 5 6 7 8 9
+    result = newStringOfCap(vcl.buffer.len - vcl.bookmark + vcl.pos)
+  else:
+    #   s   b     p   e
+    # 0 1 2 3 4 5 6 7 8 9
+    result = newStringOfCap(vcl.pos - vcl.bookmark)
 
-template wrappedIdx(idx: untyped): int = idx mod vcl.buffer.len
+  let curPos = vcl.pos
+  vcl.pos = vcl.bookmark
+  while vcl.pos != curPos: result.add(vcl.read)
+]#
 
 proc isLineWrap(vcl: var VCardLexer, allowRefill = true): bool =
   if vcl.buffer[vcl.pos] != '\r': return false
@@ -105,29 +137,31 @@ proc isLineWrap(vcl: var VCardLexer, allowRefill = true): bool =
            vcl.buffer[wrappedIdx(vcl.pos + 2)] == ' '
 
 proc read*(vcl: var VCardLexer, peek = false): char =
-  if vcl.pos == vcl.bufEnd: vcl.fillBuffer()
+  if vcl.atEnd: vcl.fillBuffer()
 
   if vcl.isLineWrap:
     vcl.pos += 3
     vcl.lineNumber += 1
     vcl.lineStart = vcl.pos
-    if vcl.pos == vcl.bufEnd: vcl.fillBuffer()
+    if vcl.atEnd: vcl.fillBuffer()
 
   elif vcl.buffer[vcl.pos] == '\n':
     vcl.lineNumber += 1
     vcl.lineStart = wrappedIdx(vcl.pos + 1)
 
   result = vcl.buffer[vcl.pos]
-  if not peek: vcl.pos = wrappedIdx(vcl.pos + 1)
+  if not peek:
+    if vcl.bookmark != -1: vcl.bookmarkVal.add(result)
+    vcl.pos = wrappedIdx(vcl.pos + 1)
 
 proc readRune*(vcl: var VCardLexer, peek = false): Rune =
-  if vcl.pos == vcl.bufEnd: vcl.fillBuffer()
+  if vcl.atEnd: vcl.fillBuffer()
 
   if vcl.isLineWrap:
     vcl.pos += 3
     vcl.lineNumber += 1
     vcl.lineStart = vcl.pos
-    if vcl.pos == vcl.bufEnd: vcl.fillBuffer()
+    if vcl.atEnd: vcl.fillBuffer()
 
   elif vcl.buffer[vcl.pos] == '\n':
     vcl.lineNumber += 1
@@ -146,16 +180,175 @@ proc getColNumber*(vcl: VCardLexer, pos: int): int =
   if vcl.lineStart < pos: return pos - vcl.lineStart
   else: return (vcl.buffer.len - vcl.lineStart) + pos
 
+## Unit Tests
+## ============================================================================
+
+import std/unittest
+
+proc dumpLexerState*(l: VCardLexer): string =
+  result =
+    "pos        = " & $l.pos & "\p" &
+    "bookmark   = " & $l.bookmark & "\p" &
+    "lineNumber = " & $l.lineNumber & "\p" &
+    "lineStart  = " & $l.lineStart & "\p" &
+    "bufStart   = " & $l.bufStart & "\p" &
+    "bufEnd     = " & $l.bufEnd & "\p" &
+    "buffer     = " & l.buffer & "\p"
 
 suite "vcard/lexer":
 
-  func expectBfr(l: VCardLexer, s: string): bool =
+  const longTestString =
+    "This is my test string. There are many like it but this one is mine."
+
+  proc bufferIs(vcl: VCardLexer, s: string): bool =
+    #debugEcho vcl.buffer & " : " & $vcl.bufStart & "-" & $vcl.bufEnd
+    # for i in vcl.bufStart..<vcl.bufEnd:
+    #   debugEcho $i & ": " & vcl.buffer[i]
+
     for i in 0..<s.len:
-      if s[i] != l.buffer[i]:
+      # debugEcho "i:" & $i & "\tl.bufStart:" & $(vcl.bufStart + i)
+      # debugEcho s[i] & " == " & vcl.buffer[vcl.bufStart + i]
+      if s[i] != vcl.buffer[wrappedIdx(vcl.bufStart + i)]:
+        return false
+    return true
+
+  #test "fillBuffer doesn't double the buffer needlessly":
+  #  var l: VCardLexer
+
+  proc readExpected(vcl: var VCardLexer, s: string): bool =
+    for i in 0..<s.len:
+      if vcl.read != s[i]:
         return false
     return true
 
   test "can open and fill buffer":
     var l: VCardLexer
     l.open(newStringStream("test"))
-    check l.expectBfr("test")
+    check:
+      l.bufferIs("test")
+      not l.isFull
+      l.readExpected("test")
+
+  test "refills buffer when emptied":
+    var l: VCardLexer
+    l.open(newStringStream("test"), 3)
+    check:
+      l.bufferIs("te")
+      l.isFull
+      l.read == 't'
+      l.read == 'e'
+      l.read == 's'
+      l.bufferIs("st")
+      l.read == 't'
+
+  test "isFull correctness":
+    var l = VCardLexer(
+      pos: 0,
+      bookmark: -1,
+      buffer: "0123456789",
+      bufStart: 0,
+      bufEnd: 9)
+
+    # s                 e
+    # 0 1 2 3 4 5 6 7 8 9
+    check l.isFull
+
+    # s p               e
+    # 0 1 2 3 4 5 6 7 8 9
+    discard l.read
+    check not l.isFull
+
+    #     e s
+    # 0 1 2 3 4 5 6 7 8 9
+    l.bufStart = 3
+    l.pos = 3
+    l.bufEnd = 2
+    check l.isFull
+
+    #     e s p
+    # 0 1 2 3 4 5 6 7 8 9
+    discard l.read
+    check:
+      l.pos == 4
+      not l.isFull
+
+    #                 e s
+    # 0 1 2 3 4 5 6 7 8 9
+    l.bufStart = 9
+    l.pos = 9
+    l.bufEnd = 8
+    check l.isFull
+
+    # p               e s
+    # 0 1 2 3 4 5 6 7 8 9
+    discard l.read
+    check:
+      l.pos == 0
+      not l.isFull
+
+  test "handles wrapped lines":
+    var l: VCardLexer
+    l.open(newStringStream("line\r\n  wrap\r\nline 2"), 3)
+
+    check l.readExpected("line wrap\r\nline 2")
+
+  test "fillBuffer correctness":
+    var l: VCardLexer
+    l.open(newStringStream(longTestString), 5)
+    check:
+      l.bufferIs(longTestString[0..<4])
+      l.isFull
+      l.bufStart == 0
+      l.bufEnd == 4
+      l.pos == 0
+      l.readExpected("Th")
+      not l.isFull
+      not l.atEnd
+      l.pos == 2
+
+    l.fillBuffer
+    check:
+      l.isFull
+      l.bufEnd == 1
+      l.pos == 2
+      l.bufStart == 2
+
+  test "bookmark preserves the buffer":
+    var l: VCardLexer
+    l.open(newStringStream(longTestString), 7)
+    check:
+      l.buffer.len == 7
+      l.bufferIs(longTestString[0..<6])
+      l.isFull
+      l.bufEnd == 6
+      l.pos == 0
+      l.bookmark == -1
+      l.readExpected(longTestString[0..<5])
+      not l.isFull
+      not l.atEnd
+      l.pos == 5
+
+    l.setBookmark
+    # read enough to require us to refill the buffer.
+    check:
+      l.bookmark == 5
+      l.readExpected(longTestString[5..<10])
+      l.pos == 3
+      newStartIdx(l) == 5
+      l.buffer.len == 7
+
+    l.returnToBookmark
+    check:
+      l.bookmark == -1
+      l.pos == 5
+
+  test "readRune":
+    var l: VCardLexer
+    l.open(newStringStream("TEST"))
+    check:
+      l.bufferIs("TEST")
+      l.peekRune == Rune('T')
+      l.readRune == Rune('T')
+      l.readRune == Rune('E')
+      l.readRune == Rune('S')
+      l.readRune == Rune('T')
