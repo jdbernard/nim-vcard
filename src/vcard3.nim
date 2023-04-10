@@ -388,7 +388,7 @@ func newVC3_Email*(
   emailType = @[$etInternet],
   group = none[string]()): VC3_Email =
 
-  return VC3_Email(name: "EMAIL", emailType: emailType, group: group)
+  return assignFields(VC3_Email(name: "EMAIL"), value, emailType, group)
 
 func newVC3_Mailer*(
   value: string,
@@ -551,7 +551,7 @@ func newVC3_XType*(
   xParams: seq[VC3_XParam] = @[],
   group = none[string]()): VC3_XType =
 
-  if not name.startsWith("x-"):
+  if not name.startsWith("X-"):
     raise newException(ValueError, "Extended types must begin with 'x-'.")
 
   return assignFields(
@@ -1294,8 +1294,10 @@ proc serialize(r: VC3_Rev): string =
   result = r.nameWithGroup
   if r.valueType.isSome and r.valueType.get == "date-time":
     result &= ";VALUE=date-time:" & r.value.format(DATETIME_FMT)
+  elif r.valueType.isSome and r.valueType.get == "date":
+    result &= ";VALUE=date-time:" & r.value.format(DATETIME_FMT)
   else:
-    result &= ";VALUE=date:" & r.value.format(DATE_FMT)
+    result &= r.value.format(DATETIME_FMT)
 
 proc serialize(u: VC3_UID | VC3_URL | VC3_VERSION | VC3_Class): string =
   result = u.nameWithGroup & ":" & u.value
@@ -1801,7 +1803,7 @@ proc parseContentLines(p: var VC3Parser): seq[VC3_Content] =
         isInline = params.existsWithValue("ENCODING", "B")))
 
     else:
-      if not name.startsWith("x-"):
+      if not name.startsWith("X-"):
         p.error("unrecognized content type: '$1'" % [name])
 
       result.add(newVC3_XType(

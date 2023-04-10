@@ -1,0 +1,26 @@
+BEGIN:VCARD
+PRODID:-//CyrusIMAP.org//Cyrus 3.7.0-alpha0-927-gf4c98c8499-fm-202208..//EN
+VERSION:3.0
+UID:cdaf67dc-b702-41ac-9c26-bb61df3032d2
+N:Bernard;Jonathan;;;
+FN:Jonathan Bernard
+ORG:;
+TITLE:
+NICKNAME:
+NOTE:
+REV:20220908T122102Z
+EMAIL;TYPE=home;TYPE=pref:jonathan@jdbernard.com
+EMAIL;TYPE=work:jdb@jdb-software.com
+email2.X-ABLabel:Obsolete
+email2.EMAIL:jonathan.bernard@sailpoint.com
+email3.X-ABLabel:Obsolete
+email3.EMAIL:jonathan.bernard@accenture.com
+email4.X-ABLabel:Obsolete
+email4.EMAIL:jbernard@fairwaytech.com
+email5.X-ABLabel:Obsolete
+email5.EMAIL:jobernar@linkedin.com
+EMAIL;TYPE=work:jbernard@vectra.ai
+TEL;TYPE=CELL:(512) 777-1602
+tel1.X-ABLabel:Mobile (alernate)
+tel1.TEL:(512) 784-2388
+END:VCARD

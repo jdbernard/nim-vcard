@@ -53,3 +53,11 @@ suite "vcard/vcard3":
       vcards[0].fn.value == "Frank Dawson"
       vcards[0].email.len == 2
       (vcards[0].email --> find(it.emailType.contains("PREF"))).isSome
+
+  test "Jonathan Bernard VCard":
+    #const jdbVcard = readFile("tests/jdb.vcf")
+    let jdb = parseVCard3File("tests/jdb.vcf")[0]
+    check:
+      jdb.email.len == 7
+      jdb.email[0].value == "jonathan@jdbernard.com"
+      jdb.fn.value == "Jonathan Bernard"
