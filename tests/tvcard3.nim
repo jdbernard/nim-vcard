@@ -60,4 +60,5 @@ suite "vcard/vcard3":
     check:
       jdb.email.len == 7
       jdb.email[0].value == "jonathan@jdbernard.com"
+      jdb.email[0].emailType.contains("pref")
       jdb.fn.value == "Jonathan Bernard"
