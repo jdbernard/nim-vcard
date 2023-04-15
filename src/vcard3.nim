@@ -523,8 +523,8 @@ func newVC3_Sound*(
 func newVC3_UID*(value: string, group = none[string]()): VC3_UID =
   return VC3_UID(name: "UID", value: value, group: group)
 
-func newVC3_URL*(value: string, group = none[string]()): VC3_Url =
-  return VC3_Url(name: "URL", value: value, group: group)
+func newVC3_URL*(value: string, group = none[string]()): VC3_URL =
+  return VC3_URL(name: "URL", value: value, group: group)
 
 func newVC3_Version*(group = none[string]()): VC3_Version =
   return VC3_Version(name: "VERSION", value: "3.0", group: group)
@@ -652,11 +652,11 @@ func sortstring*(vc3: VCard3): Option[VC3_SortString] = vc3.content.sortstring
 func sound*(c: VC3_ContentList): seq[VC3_Sound] = findAll[VC3_Sound](c)
 func sound*(vc3: VCard3): seq[VC3_Sound] = vc3.content.sound
 
-func uid*(c: VC3_ContentList): Option[VC3_Uid] = findFirst[VC3_Uid](c)
-func uid*(vc3: VCard3): Option[VC3_Uid] = vc3.content.uid
+func uid*(c: VC3_ContentList): Option[VC3_UID] = findFirst[VC3_UID](c)
+func uid*(vc3: VCard3): Option[VC3_UID] = vc3.content.uid
 
-func url*(c: VC3_ContentList): Option[VC3_Url] = findFirst[VC3_Url](c)
-func url*(vc3: VCard3): Option[VC3_Url] = vc3.content.url
+func url*(c: VC3_ContentList): Option[VC3_URL] = findFirst[VC3_URL](c)
+func url*(vc3: VCard3): Option[VC3_URL] = vc3.content.url
 
 func version*(c: VC3_ContentList): VC3_Version =
   let found = findFirst[VC3_Version](c)
@@ -680,31 +680,42 @@ func xTypes*(vc3: VCard3): seq[VC3_XType] = vc3.content.xTypes
 # Setters
 # =============================================================================
 
-func set*[T](vc3: var VCard3, newContent: var T): void =
-  let existingIdx = vc3.content.indexOfIt(it of T)
-  if existingIdx < 0:
-    newContent.contentId = vc3.takeContentId
-    vc3.content.add(newContent)
-  else:
-    newContent.contentId = vc3.content[existingIdx].contentId
-    vc3.content[existingIdx] = newContent
+func set*[T](vc3: var VCard3, content: varargs[T]): void =
+  for c in content:
+    var nc = c
+    let existingIdx = vc3.content.indexOfIt(it of T)
+    if existingIdx < 0:
+      nc.contentId = vc3.takeContentId
+      vc3.content.add(nc)
+    else:
+      nc.contentId = vc3.content[existingIdx].contentId
+      vc3.content[existingIdx] = nc
 
-func set*[T](vc3: VCard3, newContent: var T): VCard3 =
+func set*[T](vc3: VCard3, content: varargs[T]): VCard3 =
   result = vc3
-  result.set(newContent)
+  result.set(content)
 
-func add*[T](vc3: var VCard3, newContent: T): void =
-  newContent.contentId = vc3.takeContentId
-  vc3.content.add(newContent)
+func add*[T](vc3: var VCard3, content: varargs[T]): void =
+  for c in content:
+    var nc = c
+    nc.contentId = vc3.takeContentId
+    vc3.content.add(nc)
 
-func add*[T](vc3: VCard3, newContent: T): VCard3 =
+func add*[T](vc3: VCard3, content: varargs[T]): VCard3 =
   result = vc3
-  result.add(newContent)
+  result.add(content)
 
 func updateOrAdd*[T](vc3: var VCard3, content: seq[T]): VCard3 =
   for c in content:
     let existingIdx = vc3.content.indexOfIt(it.contentId == c.contentId)
     if existingIdx < 0: vc3.content.add(c)
+    else: c.content[existingIdx] = c
+
+func updateOrAdd*[T](vc3: VCard3, content: seq[T]): VCard3 =
+  result = vc3
+  for c in content:
+    let existingIdx = result.content.indexOfIt(it.contentId == c.contentId)
+    if existingIdx < 0: result.content.add(c)
     else: c.content[existingIdx] = c
 
 # TODO: simplify with macros?
@@ -1781,10 +1792,10 @@ proc parseContentLines(p: var VC3Parser): seq[VC3_Content] =
         isInline = params.existsWithValue("ENCODING", "B")))
 
     of $cnUid:
-      result.add(newVC3_Uid(group = group, value = p.readValue))
+      result.add(newVC3_UID(group = group, value = p.readValue))
 
     of $cnUrl:
-      result.add(newVC3_Url(group = group, value = p.readValue))
+      result.add(newVC3_URL(group = group, value = p.readValue))
 
     of $cnVersion:
       p.expect("3.0")

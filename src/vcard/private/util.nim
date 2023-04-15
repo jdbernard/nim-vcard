@@ -12,16 +12,16 @@ const DATE_TIME_FMTS = [
   "yyyy-MM-dd'T'HH:mm:ss'.'fffzzz",
 ]
 
-const ALL_FMTS = DATE_FMTS.toSeq & DATE_TIME_FMTS.toSeq
+const ALL_FMTS = DATE_TIME_FMTS.toSeq & DATE_FMTS.toSeq
 
 proc parseDateTimeStr(
     dateStr: string,
     dateFmts: openarray[string]
-  ): DateTime {.inline.} =
+  ): DateTime {.inline, raises:[ValueError].} =
 
   for fmt in dateFmts:
     try: result = parse(dateStr, fmt)
-    except: discard
+    except ValueError: discard
 
   if not result.isInitialized:
     raise newException(ValueError, "cannot parse date: " & dateStr )
