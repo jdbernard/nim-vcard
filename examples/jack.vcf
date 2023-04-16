@@ -1,0 +1,10 @@
+BEGIN:VCARD
+VERSION:3.0
+UID: 5db6f100-e2d6-4e8d-951f-d920586bc069
+N:Foster;Jack;Allen;;
+FN:Allen Foster
+REV:20230408T122102Z
+EMAIL;TYPE=home;TYPE=pref:allen@fosters.test
+EMAIL;TYPE=work:jack.foster@company.test
+TEL;TYPE=CELL:+1 (555) 123-4567
+END:VCARD

@@ -22,30 +22,7 @@ TEL;TYPE=CELL:+1 (555) 123-4567
 END:VCARD
 ```
 
-```nim
-import vcard
-
-# Reading in an existing vcard
-let vcards = parseVCard3File("jack.vcf")
-assert vcards.len == 1
-let vcAllen = vcards[0]
-
-assert vcAllen.email.len == 2
-assert vcAllen.email[0].value == "allen@fosters.test"
-assert vcAllen.n.first == "Jack"
-
-
-# Creating a new VCard
-var vcSusan: VCard3
-vcSusan.add(
-  newVC3_N(given = "Susan", family = "Foster"),
-  newVC3_Email(value = "susan@fosters.test", emailType = @["PREF", $etInternet),
-  newVC3_Tel(
-    value = "+1 (555) 444-3889",
-    telType = @[$ttHome, $ttCell, $ttVoice, $ttMsg])
-)
-writeFile("susan.vcf", $vcSusan)
-```
+https://github.com/jdbernard/nim-vcard/blob/4839ff64a8e6da1ad4803adbd71c0a53cae81c4e/examples/simple.nim#L1-L22
 
 ## Future Goals
 
@@ -55,9 +32,9 @@ writeFile("susan.vcf", $vcSusan)
 
 *Need to clean up and organize*
 
-Run `tlexer` tests in gdb:
+Run `tvcard3` tests in gdb:
 
 ```sh
 $ cd tests
-$ nim --debuginfo --linedir:on c tlexer
-$ gdb --tui tlexer
+$ nim --debuginfo --linedir:on c tvcard3
+$ gdb --tui tvcard3
