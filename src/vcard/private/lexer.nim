@@ -180,11 +180,6 @@ proc getColNumber*(vcl: VCardLexer, pos: int): int =
   if vcl.lineStart < pos: return pos - vcl.lineStart
   else: return (vcl.buffer.len - vcl.lineStart) + pos
 
-## Unit Tests
-## ============================================================================
-
-import std/unittest
-
 proc dumpLexerState*(l: VCardLexer): string =
   result =
     "pos        = " & $l.pos & "\p" &
@@ -195,7 +190,9 @@ proc dumpLexerState*(l: VCardLexer): string =
     "bufEnd     = " & $l.bufEnd & "\p" &
     "buffer     = " & l.buffer & "\p"
 
-suite "vcard/lexer":
+## Unit Tests
+## ============================================================================
+proc runVcardLexerPrivateTests*() =
 
   const longTestString =
     "This is my test string. There are many like it but this one is mine."
@@ -212,36 +209,34 @@ suite "vcard/lexer":
         return false
     return true
 
-  #test "fillBuffer doesn't double the buffer needlessly":
-  #  var l: VCardLexer
-
   proc readExpected(vcl: var VCardLexer, s: string): bool =
     for i in 0..<s.len:
       if vcl.read != s[i]:
         return false
     return true
 
-  test "can open and fill buffer":
+  # "can open and fill buffer":
+  block:
     var l: VCardLexer
     l.open(newStringStream("test"))
-    check:
-      l.bufferIs("test")
-      not l.isFull
-      l.readExpected("test")
+    assert l.bufferIs("test")
+    assert not l.isFull
+    assert l.readExpected("test")
 
-  test "refills buffer when emptied":
+  # "refills buffer when emptied":
+  block:
     var l: VCardLexer
     l.open(newStringStream("test"), 3)
-    check:
-      l.bufferIs("te")
-      l.isFull
-      l.read == 't'
-      l.read == 'e'
-      l.read == 's'
-      l.bufferIs("st")
-      l.read == 't'
+    assert l.bufferIs("te")
+    assert l.isFull
+    assert l.read == 't'
+    assert l.read == 'e'
+    assert l.read == 's'
+    assert l.bufferIs("st")
+    assert l.read == 't'
 
-  test "isFull correctness":
+  # "isFull correctness":
+  block:
     var l = VCardLexer(
       pos: 0,
       bookmark: -1,
@@ -251,104 +246,102 @@ suite "vcard/lexer":
 
     # s                 e
     # 0 1 2 3 4 5 6 7 8 9
-    check l.isFull
+    assert l.isFull
 
     # s p               e
     # 0 1 2 3 4 5 6 7 8 9
     discard l.read
-    check not l.isFull
+    assert not l.isFull
 
     #     e s
     # 0 1 2 3 4 5 6 7 8 9
     l.bufStart = 3
     l.pos = 3
     l.bufEnd = 2
-    check l.isFull
+    assert l.isFull
 
     #     e s p
     # 0 1 2 3 4 5 6 7 8 9
     discard l.read
-    check:
-      l.pos == 4
-      not l.isFull
+    assert l.pos == 4
+    assert not l.isFull
 
     #                 e s
     # 0 1 2 3 4 5 6 7 8 9
     l.bufStart = 9
     l.pos = 9
     l.bufEnd = 8
-    check l.isFull
+    assert l.isFull
 
     # p               e s
     # 0 1 2 3 4 5 6 7 8 9
     discard l.read
-    check:
-      l.pos == 0
-      not l.isFull
+    assert l.pos == 0
+    assert not l.isFull
 
-  test "handles wrapped lines":
+  # "handles wrapped lines":
+  block:
     var l: VCardLexer
     l.open(newStringStream("line\r\n  wrap\r\nline 2"), 3)
 
-    check l.readExpected("line wrap\r\nline 2")
+    assert l.readExpected("line wrap\r\nline 2")
 
-  test "fillBuffer correctness":
+  # "fillBuffer correctness":
+  block:
     var l: VCardLexer
     l.open(newStringStream(longTestString), 5)
-    check:
-      l.bufferIs(longTestString[0..<4])
-      l.isFull
-      l.bufStart == 0
-      l.bufEnd == 4
-      l.pos == 0
-      l.readExpected("Th")
-      not l.isFull
-      not l.atEnd
-      l.pos == 2
+    assert l.bufferIs(longTestString[0..<4])
+    assert l.isFull
+    assert l.bufStart == 0
+    assert l.bufEnd == 4
+    assert l.pos == 0
+    assert l.readExpected("Th")
+    assert not l.isFull
+    assert not l.atEnd
+    assert l.pos == 2
 
     l.fillBuffer
-    check:
-      l.isFull
-      l.bufEnd == 1
-      l.pos == 2
-      l.bufStart == 2
+    assert l.isFull
+    assert l.bufEnd == 1
+    assert l.pos == 2
+    assert l.bufStart == 2
 
-  test "bookmark preserves the buffer":
+  # "bookmark preserves the buffer":
+  block:
     var l: VCardLexer
     l.open(newStringStream(longTestString), 7)
-    check:
-      l.buffer.len == 7
-      l.bufferIs(longTestString[0..<6])
-      l.isFull
-      l.bufEnd == 6
-      l.pos == 0
-      l.bookmark == -1
-      l.readExpected(longTestString[0..<5])
-      not l.isFull
-      not l.atEnd
-      l.pos == 5
+    assert l.buffer.len == 7
+    assert l.bufferIs(longTestString[0..<6])
+    assert l.isFull
+    assert l.bufEnd == 6
+    assert l.pos == 0
+    assert l.bookmark == -1
+    assert l.readExpected(longTestString[0..<5])
+    assert not l.isFull
+    assert not l.atEnd
+    assert l.pos == 5
 
     l.setBookmark
     # read enough to require us to refill the buffer.
-    check:
-      l.bookmark == 5
-      l.readExpected(longTestString[5..<10])
-      l.pos == 3
-      newStartIdx(l) == 5
-      l.buffer.len == 7
+    assert l.bookmark == 5
+    assert l.readExpected(longTestString[5..<10])
+    assert l.pos == 3
+    assert newStartIdx(l) == 5
+    assert l.buffer.len == 7
 
     l.returnToBookmark
-    check:
-      l.bookmark == -1
-      l.pos == 5
+    assert l.bookmark == -1
+    assert l.pos == 5
 
-  test "readRune":
+  # "readRune":
+  block:
     var l: VCardLexer
     l.open(newStringStream("TEST"))
-    check:
-      l.bufferIs("TEST")
-      l.peekRune == Rune('T')
-      l.readRune == Rune('T')
-      l.readRune == Rune('E')
-      l.readRune == Rune('S')
-      l.readRune == Rune('T')
+    assert l.bufferIs("TEST")
+    assert l.peekRune == Rune('T')
+    assert l.readRune == Rune('T')
+    assert l.readRune == Rune('E')
+    assert l.readRune == Rune('S')
+    assert l.readRune == Rune('T')
+
+when isMainModule: runVcardLexerTests()

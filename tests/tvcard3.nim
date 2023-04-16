@@ -1,24 +1,47 @@
-import options, unittest, vcard3, zero_functional
+import options, unittest, zero_functional
+
+import ./vcard
 
 suite "vcard/vcard3":
 
-  let testVCard =
-    "BEGIN:VCARD\r\n" &
-    "VERSION:3.0\r\n" &
-    "FN:Mr. John Q. Public\\, Esq.\r\n" &
-    "N:Public;John;Quinlan;Mr.;Esq.\r\n" &
-    "END:VCARD\r\n"
+  test "vcard3/private tests":
+    runVcard3PrivateTests()
 
-  test "minimal VCard":
-    let vc = parseVCard3(testVCard)[0]
+  let jdbVCard = readFile("tests/jdb.vcf")
+  let jdb = parseVCard3(jdbVCard)[0]
+
+  test "parseVCard3":
     check:
-      vc.n.family[0] == "Public"
-      vc.n.given[0] == "John"
-      vc.fn.value == "Mr. John Q. Public\\, Esq."
+      jdb.n.family == @["Bernard"]
+      jdb.n.given == @["Jonathan"]
+      jdb.fn.value == "Jonathan Bernard"
 
-  test "serialize minimal VCard":
-    let vc = parseVCard3(testVCard)[0]
-    check $vc == testVCard
+  test "parseVCard3File":
+    let jdb = parseVCard3File("tests/jdb.vcf")[0]
+    check:
+      jdb.email.len == 7
+      jdb.email[0].value == "jonathan@jdbernard.com"
+      jdb.email[0].emailType.contains("pref")
+      jdb.fn.value == "Jonathan Bernard"
+
+  test "email is parsed correctly":
+    check:
+      jdb.email.len == 7
+      jdb.email[0].value == "jonathan@jdbernard.com"
+      jdb.email[0].emailType.contains("pref")
+      jdb.email[0].emailType.contains("home")
+      jdb.email[1].value == "jdb@jdb-software.com"
+      jdb.email[1].emailType.contains("work")
+      jdb.email[2].group.isSome
+      jdb.email[2].group.get == "email2"
+      jdb.email[6].value == "jbernard@vectra.ai"
+      jdb.email[6].emailType.contains("work")
+
+  test "tel is parsed correctly":
+    check:
+      jdb.tel.len == 2
+      jdb.tel[0].value == "(512) 777-1602"
+      jdb.tel[0].telType.contains("CELL")
 
   test "RFC2426 Author's VCards":
     let vcardsStr =
@@ -53,12 +76,3 @@ suite "vcard/vcard3":
       vcards[0].fn.value == "Frank Dawson"
       vcards[0].email.len == 2
       (vcards[0].email --> find(it.emailType.contains("PREF"))).isSome
-
-  test "Jonathan Bernard VCard":
-    #const jdbVcard = readFile("tests/jdb.vcf")
-    let jdb = parseVCard3File("tests/jdb.vcf")[0]
-    check:
-      jdb.email.len == 7
-      jdb.email[0].value == "jonathan@jdbernard.com"
-      jdb.email[0].emailType.contains("pref")
-      jdb.fn.value == "Jonathan Bernard"

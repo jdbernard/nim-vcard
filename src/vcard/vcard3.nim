@@ -14,7 +14,7 @@ import std/[base64, macros, options, sequtils, streams, strutils, times,
 
 import zero_functional
 
-import vcard/private/[util, lexer]
+import ./vcard/private/[util, lexer]
 
 type
   VC3_ValueTypes = enum
@@ -381,7 +381,7 @@ func newVC3_Tel*(
   telType = @[$ttVoice],
   group = none[string]()): VC3_Tel =
 
-  return VC3_Tel(name: "TEL", telType: telType, group: group)
+  return assignFields(VC3_Tel(name: "TEL"), value, telType, group)
 
 func newVC3_Email*(
   value: string,
@@ -1712,7 +1712,7 @@ proc parseContentLines(p: var VC3Parser): seq[VC3_Content] =
           lat = parseFloat(partsStr[0]),
           long = parseFloat(partsStr[1])
         ))
-      except:
+      except ValueError:
         p.error("expected two float values separated by ';' for the GEO " &
           "content type but received '" & rawValue & "'")
 
@@ -1881,144 +1881,147 @@ stateDiagram-v2
 
 ## Private Function Unit Tests
 ## ============================================================================
-
-import std/unittest
-
-suite "vcard/vcard3/private":
+proc runVcard3PrivateTests*() =
 
   proc initParser(input: string): VC3Parser =
     result = VC3Parser(filename: "private unittests")
     lexer.open(result, newStringStream(input))
 
-  test "readGroup with group":
+  # "vcard/vcard3/private"
+  block:
+
     var p = initParser("mygroup.BEGIN:VCARD")
     let g = p.readGroup
+    assert g.isSome
+    assert g.get == "mygroup"
 
-    check:
-      g.isSome
-      g.get == "mygroup"
-
-  test "readGroup without group":
+  # "readGroup without group":
+  block:
     var p = initParser("BEGIN:VCARD")
-    check p.readGroup.isNone
+    assert p.readGroup.isNone
 
-  test "expect (case-sensitive)":
+  # "expect (case-sensitive)":
+  block:
     var p = initParser("BEGIN:VCARD")
     p.expect("BEGIN", true)
 
     try:
       p.expect(":vcard", true)
-      check "" == "expect should have raised an error"
-    except: discard
+      assert "" == "expect should have raised an error"
+    except CatchableError: discard
 
-  test "expect (case-insensitive)":
+  # "expect (case-insensitive)":
+  block:
     var p = initParser("BEGIN:VCARD")
     p.expect("begin")
 
     try:
       p.expect("begin")
-      check "" == "expect should have raised an error"
-    except: discard
+      assert "" == "expect should have raised an error"
+    except CatchableError: discard
 
-  test "readName":
+  # "readName":
+  block:
     var p = initParser("TEL;tel;x-Example;x-Are1+Name")
-    check:
-      p.readName == "TEL"
-      p.read == ';'
-      p.readName == "TEL"
-      p.read == ';'
-      p.readName == "X-EXAMPLE"
-      p.read == ';'
-      p.readName == "X-ARE1"
+    assert p.readName == "TEL"
+    assert p.read == ';'
+    assert p.readName == "TEL"
+    assert p.read == ';'
+    assert p.readName == "X-EXAMPLE"
+    assert p.read == ';'
+    assert p.readName == "X-ARE1"
 
     try:
       discard p.readName
-      check "" == "readName should have raised an error"
-    except: discard
+      assert "" == "readName should have raised an error"
+    except CatchableError: discard
 
-  test "readParamValue":
+  # "readParamValue":
+  block:
     var p = initParser("TEL;TYPE=WORK;TYPE=Fun&Games%:+15551234567")
-    check:
-      p.readName == "TEL"
-      p.read == ';'
-      p.readName == "TYPE"
-      p.read == '='
-      p.readParamValue == "WORK"
-      p.read == ';'
-      p.readName == "TYPE"
-      p.read == '='
-      p.readParamValue == "Fun&Games%"
+    assert p.readName == "TEL"
+    assert p.read == ';'
+    assert p.readName == "TYPE"
+    assert p.read == '='
+    assert p.readParamValue == "WORK"
+    assert p.read == ';'
+    assert p.readName == "TYPE"
+    assert p.read == '='
+    assert p.readParamValue == "Fun&Games%"
 
-  test "readParams":
+  # "readParams":
+  block:
     var p = initParser("TEL;TYPE=WORK;TYPE=Fun&Games%,Extra:+15551234567")
-    check p.readName == "TEL"
+    assert p.readName == "TEL"
     let params = p.readParams
-    check:
-      params.len == 2
-      params[0].name == "TYPE"
-      params[0].values.len == 1
-      params[0].values[0] == "WORK"
-      params[1].name == "TYPE"
-      params[1].values.len == 2
-      params[1].values[0] == "Fun&Games%"
-      params[1].values[1] == "Extra"
+    assert params.len == 2
+    assert params[0].name == "TYPE"
+    assert params[0].values.len == 1
+    assert params[0].values[0] == "WORK"
+    assert params[1].name == "TYPE"
+    assert params[1].values.len == 2
+    assert params[1].values[0] == "Fun&Games%"
+    assert params[1].values[1] == "Extra"
 
-  test "readValue":
+  # "readValue":
+  block:
     var p = initParser("TEL;TYPE=WORK:+15551234567\r\nFN:John Smith\r\n")
-    check p.skip("TEL")
+    assert p.skip("TEL")
     discard p.readParams
-    check p.read == ':'
-    check p.readValue == "+15551234567"
+    assert p.read == ':'
+    assert p.readValue == "+15551234567"
     p.expect("\r\n")
-    check p.readName == "FN"
+    assert p.readName == "FN"
     discard p.readParams
-    check p.read == ':'
-    check p.readValue == "John Smith"
+    assert p.read == ':'
+    assert p.readValue == "John Smith"
 
-  test "readTextValueList":
+  # "readTextValueList":
+  block:
     var p = initParser("Public;John;Quincey,Adams;Rev.;Esq:limited\r\n")
-    check:
-      p.readTextValueList == @["Public"]
-      p.readTextValueList(ifPrefix = some(';')) == @["John"]
-      p.readTextValueList(ifPrefix = some(';')) == @["Quincey", "Adams"]
-      p.readTextValueList(ifPrefix = some(';')) == @["Rev."]
-      p.readTextValueList(ifPrefix = some(';')) == @["Esq:limited"]
-      p.readTextValueList(ifPrefix = some(';')) == newSeq[string]()
+    assert p.readTextValueList == @["Public"]
+    assert p.readTextValueList(ifPrefix = some(';')) == @["John"]
+    assert p.readTextValueList(ifPrefix = some(';')) == @["Quincey", "Adams"]
+    assert p.readTextValueList(ifPrefix = some(';')) == @["Rev."]
+    assert p.readTextValueList(ifPrefix = some(';')) == @["Esq:limited"]
+    assert p.readTextValueList(ifPrefix = some(';')) == newSeq[string]()
 
-  test "existsWithValue":
+  # "existsWithValue":
+  block:
     var p = initParser(";TYPE=WORK;TYPE=VOICE;TYPE=CELL")
     let params = p.readParams
-    check:
-      params.existsWithValue("TYPE", "WORK")
-      params.existsWithValue("TYPE", "CELL")
-      not params.existsWithValue("TYPE", "ISDN")
+    assert params.existsWithValue("TYPE", "WORK")
+    assert params.existsWithValue("TYPE", "CELL")
+    assert not params.existsWithValue("TYPE", "ISDN")
 
-  test "getSingleValue":
+  # "getSingleValue":
+  block:
     var p = initParser(";TYPE=WORK;TYPE=VOICE;TYPE=CELL")
     let params = p.readParams
     let val = params.getSingleValue("TYPE")
-    check:
-      val.isSome
-      val.get == "WORK"
-      params.getSingleValue("VALUE").isNone
+    assert val.isSome
+    assert val.get == "WORK"
+    assert params.getSingleValue("VALUE").isNone
 
-  test "getMultipleValues":
+  # "getMultipleValues":
+  block:
     var p = initParser(";TYPE=WORK;TYPE=VOICE;TYPE=CELL")
     let params = p.readParams
-    check:
-      params.getMultipleValues("TYPE") == @["WORK", "VOICE", "CELL"]
-      params.getMultipleValues("VALUE") == newSeq[string]()
+    assert params.getMultipleValues("TYPE") == @["WORK", "VOICE", "CELL"]
+    assert params.getMultipleValues("VALUE") == newSeq[string]()
 
-  test "validateNoParameters":
+  # "validateNoParameters":
+  block:
     var p = initParser(";TYPE=WORK;TYPE=VOICE;TYPE=CELL")
     let params = p.readParams
     p.validateNoParameters(@[], "TEST")
     try:
       p.validateNoParameters(params, "TEST")
-      check "" == "validateNoParameters should have errored"
-    except: discard
+      assert "" == "validateNoParameters should have errored"
+    except CatchableError: discard
 
-  test "validateRequredParameters":
+  # "validateRequredParameters":
+  block:
     var p = initParser(";CONTEXT=word;VALUE=uri;TYPE=CELL")
     let params = p.readParams
     p.validateRequiredParameters(params,
@@ -2026,5 +2029,7 @@ suite "vcard/vcard3/private":
 
     try:
       p.validateRequiredParameters(params, [("TYPE", "VOICE")])
-      check "" == "validateRequiredParameters should have errored"
-    except: discard
+      assert "" == "validateRequiredParameters should have errored"
+    except CatchableError: discard
+
+when isMainModule: runVcard3PrivateTests()
