@@ -1,6 +1,7 @@
 import options, unittest, zero_functional
 
 import ./vcard
+import ./vcard/vcard3
 
 suite "vcard/vcard3":
 
@@ -8,7 +9,8 @@ suite "vcard/vcard3":
     runVcard3PrivateTests()
 
   let jdbVCard = readFile("tests/jdb.vcf")
-  let jdb = parseVCard3(jdbVCard)[0]
+  # TODO: remove cast after finishing VCard4 implementation
+  let jdb = cast[VCard3](parseVCards(jdbVCard)[0])
 
   test "parseVCard3":
     check:
@@ -17,7 +19,7 @@ suite "vcard/vcard3":
       jdb.fn.value == "Jonathan Bernard"
 
   test "parseVCard3File":
-    let jdb = parseVCard3File("tests/jdb.vcf")[0]
+    let jdb = cast[VCard3](parseVCardsFromFile("tests/jdb.vcf")[0])
     check:
       jdb.email.len == 7
       jdb.email[0].value == "jonathan@jdbernard.com"
@@ -70,9 +72,9 @@ suite "vcard/vcard3":
       "EMAIL;TYPE=INTERNET:howes@netscape.com\r\n" &
       "END:vCard\r\n"
 
-    let vcards = parseVCard3(vcardsStr)
+    let vcards = parseVCards(vcardsStr)
     check:
       vcards.len == 2
-      vcards[0].fn.value == "Frank Dawson"
-      vcards[0].email.len == 2
-      (vcards[0].email --> find(it.emailType.contains("PREF"))).isSome
+      cast[VCard3](vcards[0]).fn.value == "Frank Dawson"
+      cast[VCard3](vcards[0]).email.len == 2
+      (cast[VCard3](vcards[0]).email --> find(it.emailType.contains("PREF"))).isSome
