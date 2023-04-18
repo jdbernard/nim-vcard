@@ -3,14 +3,14 @@ import std/[streams, unicode]
 type VCardLexer* = object of RootObj
   input: Stream
 
-  buffer*: string       # buffer of bytes read
-  bufStart: int         # starting boundary for the buffer
-  bufEnd: int           # ending boundary for the buffer
-  pos*: int             # current read position
-  bookmark*: int        # bookmark to support rewind functionality
-  bookmarkVal*: string  # value that has been read since the bookmark was set
-  lineNumber*: int      # how many newlines have we seen so far
-  lineStart: int        # index into the buffer for the start of the current line
+  buffer*: string           # buffer of bytes read
+  bufStart: int             # starting boundary for the buffer
+  bufEnd: int               # ending boundary for the buffer
+  pos*: int                 # current read position
+  bookmark*: seq[int]       # bookmark to support rewind functionality
+  bookmarkVal*: seq[string] # value read since the bookmark was set
+  lineNumber*: int          # how many newlines have we seen so far
+  lineStart: int            # buffer index buffer for the start of the current line
 
 proc skipUtf8Bom(vcl: var VCardLexer) =
   if (vcl.buffer[0] == '\xEF') and (vcl.buffer[1] == '\xBB') and (vcl.buffer[2] == '\xBF'):
@@ -19,7 +19,7 @@ proc skipUtf8Bom(vcl: var VCardLexer) =
 template wrappedIdx(idx: untyped): int = idx mod vcl.buffer.len
 
 proc newStartIdx(vcl: VCardLexer): int =
-  if vcl.bookmark > 0: vcl.bookmark else: vcl.pos
+  if vcl.bookmark.len > 0: vcl.bookmark[0] else: vcl.pos
 
 func isFull(vcl: VCardLexer): bool {.inline.} =
   return wrappedIdx(vcl.bufEnd + 1) == vcl.newStartIdx
@@ -41,7 +41,7 @@ proc doubleBuffer(vcl: var VCardLexer) =
 
   vcl.pos -= vcl.bufStart
   vcl.lineStart -= vcl.bufStart
-  if vcl.bookmark >= 0: vcl.bookmark -= vcl.bufStart
+  if vcl.bookmark.len > 0: vcl.bookmark[0] -= vcl.bufStart
   vcl.bufStart = 0
   vcl.bufEnd = newIdx
 
@@ -84,7 +84,7 @@ proc open*(vcl: var VCardLexer, input: Stream, bufLen = 16384) =
   assert(input != nil)
   vcl.input = input
   vcl.pos = 0
-  vcl.bookmark = -1
+  vcl.bookmark = @[]
   vcl.buffer = newString(bufLen)
   vcl.bufStart = 0
   vcl.bufEnd = 0
@@ -94,18 +94,27 @@ proc open*(vcl: var VCardLexer, input: Stream, bufLen = 16384) =
   vcl.skipUtf8Bom
 
 proc setBookmark*(vcl: var VCardLexer) =
-  vcl.bookmark = vcl.pos
-  vcl.bookmarkVal = newStringOfCap(32)
+  vcl.bookmark.add(vcl.pos)
+  vcl.bookmarkVal.add(newStringOfCap(32))
 
 proc returnToBookmark*(vcl: var VCardLexer) =
-  vcl.pos = vcl.bookmark
-  vcl.bookmark = -1
+  if vcl.bookmark.len == 0: return
+  vcl.pos = vcl.bookmark.pop()
+  let valRead = vcl.bookmarkVal.pop()
+  for idx in 0..<vcl.bookmarkVal.len:
+    if vcl.bookmarkVal[idx].len > valRead.len:
+      vcl.bookmarkVal[idx] = vcl.bookmarkVal[idx][0 ..< ^valRead.len]
 
 proc unsetBookmark*(vcl: var VCardLexer) =
-  vcl.bookmark = -1
+  if vcl.bookmark.len == 0: return
+  discard vcl.bookmark.pop()
+  discard vcl.bookmarkVal.pop()
 
 proc readSinceBookmark*(vcl: var VCardLexer): string =
-  return vcl.bookmarkVal
+  if vcl.bookmarkVal.len > 0:
+    return vcl.bookmarkVal[^1]
+  else: return ""
+
 #[
   if vcl.pos < vcl.bookmark:
     #     p e   s b
@@ -151,7 +160,8 @@ proc read*(vcl: var VCardLexer, peek = false): char =
 
   result = vcl.buffer[vcl.pos]
   if not peek:
-    if vcl.bookmark != -1: vcl.bookmarkVal.add(result)
+    for idx in 0..<vcl.bookmarkVal.len:
+      vcl.bookmarkVal[idx].add(result)
     vcl.pos = wrappedIdx(vcl.pos + 1)
 
 proc readRune*(vcl: var VCardLexer, peek = false): Rune =
@@ -239,7 +249,7 @@ proc runVcardLexerPrivateTests*() =
   block:
     var l = VCardLexer(
       pos: 0,
-      bookmark: -1,
+      bookmark: @[],
       buffer: "0123456789",
       bufStart: 0,
       bufEnd: 9)
@@ -315,7 +325,7 @@ proc runVcardLexerPrivateTests*() =
     assert l.isFull
     assert l.bufEnd == 6
     assert l.pos == 0
-    assert l.bookmark == -1
+    assert l.bookmark == @[]
     assert l.readExpected(longTestString[0..<5])
     assert not l.isFull
     assert not l.atEnd
@@ -323,15 +333,80 @@ proc runVcardLexerPrivateTests*() =
 
     l.setBookmark
     # read enough to require us to refill the buffer.
-    assert l.bookmark == 5
+    assert l.bookmark == @[5]
     assert l.readExpected(longTestString[5..<10])
     assert l.pos == 3
     assert newStartIdx(l) == 5
     assert l.buffer.len == 7
 
     l.returnToBookmark
-    assert l.bookmark == -1
+    assert l.bookmark == @[]
     assert l.pos == 5
+
+  # "can set and unset multiple bookmarks"
+  block:
+    var l: VCardLexer
+    l.open(newStringStream(longTestString))
+    assert l.pos == 0
+    assert l.bookmark == @[]
+    assert l.readExpected("This is my ")
+
+    l.setBookmark
+    assert l.bookmark == @[11]
+    assert l.bookmarkVal == @[""]
+
+    assert l.readExpected("test string")
+    assert l.bookmark == @[11]
+    assert l.bookmarkVal == @["test string"]
+    assert l.readSinceBookmark == "test string"
+
+    l.setBookmark
+    assert l.bookmark == @[11, 22]
+    assert l.bookmarkVal == @["test string", ""]
+
+    assert l.readExpected(". There are many")
+    assert l.bookmarkVal == @["test string. There are many", ". There are many"]
+    assert l.readSinceBookmark == ". There are many"
+    assert l.pos == 38
+
+    l.unsetBookmark
+    assert l.pos == 38
+    assert l.bookmark == @[11]
+    assert l.bookmarkVal == @["test string. There are many"]
+    assert l.readSinceBookmark == "test string. There are many"
+
+    l.unsetBookmark
+    assert l.pos == 38
+    assert l.bookmark == @[]
+    assert l.bookmarkVal == @[]
+    assert l.readSinceBookmark == ""
+
+  # "can set and return to multiple bookmarks"
+  block:
+    var l: VCardLexer
+    l.open(newStringStream(longTestString))
+    assert l.pos == 0
+    assert l.bookmark == @[]
+    assert l.readExpected("This is my ")
+
+    l.setBookmark
+    assert l.readExpected("test string")
+    l.setBookmark
+    assert l.bookmark == @[11, 22]
+    assert l.readExpected(". There are many")
+    assert l.bookmarkVal == @["test string. There are many", ". There are many"]
+    assert l.pos == 38
+
+    l.returnToBookmark
+    assert l.pos == 22
+    assert l.bookmark == @[11]
+    assert l.bookmarkVal == @["test string"]
+    assert l.readSinceBookmark == "test string"
+
+    l.returnToBookmark
+    assert l.pos == 11
+    assert l.bookmark == @[]
+    assert l.bookmarkVal == @[]
 
   # "readRune":
   block:
@@ -344,4 +419,4 @@ proc runVcardLexerPrivateTests*() =
     assert l.readRune == Rune('S')
     assert l.readRune == Rune('T')
 
-when isMainModule: runVcardLexerTests()
+when isMainModule: runVcardLexerPrivateTests()
