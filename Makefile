@@ -5,25 +5,22 @@ SOURCES=$(call rwildcard,src/,*.nim)
 TEST_SOURCES=$(wildcard tests/*.nim)
 TESTS=$(patsubst %.nim,bin/%,$(TEST_SOURCES))
 
-.PHONY: test
-test: $(TESTS) $(SOURCES)
-	@for t in $(TESTS); do $$t; done
-
-.PHONY: watch-tests
-watch-tests:
-	watch 'make test' src tests --wait=10
-
 .PHONY: build
 build: test
 	nimble build
+
+.PHONY: test
+test:
+	#@for t in $(TESTS); do $$t; done
+	nimble --warning:BareExcept:off test
 
 .PHONY: install
 install: test
 	nimble install
 
-diagrams: doc/vcard3.mmd doc/vcard4.mmd
+diagrams: doc/vcard3.mmd
 	mmdc -i doc/vcard3.mmd -o doc/vcard3.png
-	mmdc -i doc/vcard4.mmd -o doc/vcard4.png
 
+# Target allowing for running individual tests.
 bin/tests/%: tests/%.nim $(SOURCES)
-	nim --outdir:bin/tests c $(patsubst bin/%,%.nim,$@)
+	nim --outdir:bin/tests --hints:off --warning:BareExcept:off c -r $(patsubst bin/%,%.nim,$@)
