@@ -1,25 +1,44 @@
+# VCard-specific Lexer
+# © 2022-2023 Jonathan Bernard
+
+## This module defines a lexer with functionality useful for parsing VCard
+## content. Specifically:
+## - it understands the VCard line-folding logic and transparently joins folded
+##   lines as it read input off its input stream.
+## - it supports multiple nested bookmarks to make look-ahead decisions more
+##   convenient
+## - it supports reading from the underlying stream byte-wise or as unicode
+##   runes.
+##
+## This parser uses a ring buffer underneath, only growing the size of its
+## buffer when it is completely full.
+
 import std/[streams, unicode]
 
 type VCardLexer* = object of RootObj
   input: Stream
 
-  buffer*: string           # buffer of bytes read
-  bufStart: int             # starting boundary for the buffer
-  bufEnd: int               # ending boundary for the buffer
-  pos*: int                 # current read position
-  bookmark*: seq[int]       # bookmark to support rewind functionality
-  bookmarkVal*: seq[string] # value read since the bookmark was set
-  lineNumber*: int          # how many newlines have we seen so far
-  lineStart: int            # buffer index buffer for the start of the current line
-  lineVal*: string          # value read since the start of the current line
+  buffer*: string           ## buffer of bytes read
+  bufStart: int             ## starting boundary for the buffer
+  bufEnd: int               ## ending boundary for the buffer
+  pos*: int                 ## current read position
+  bookmark*: seq[int]       ## bookmark to support rewind functionality
+  bookmarkVal*: seq[string] ## value read since the bookmark was set
+  lineNumber*: int          ## how many newlines have we seen so far
+  lineStart: int            ## buffer index buffer for the start of the current line
+  lineVal*: string          ## value read since the start of the current line
 
 proc skipUtf8Bom(vcl: var VCardLexer) =
   if (vcl.buffer[0] == '\xEF') and (vcl.buffer[1] == '\xBB') and (vcl.buffer[2] == '\xBF'):
     inc(vcl.pos, 3)
 
 template wrappedIdx(idx: untyped): int = idx mod vcl.buffer.len
+  ## Map an index into the buffer bounds (mod)
 
 proc newStartIdx(vcl: VCardLexer): int =
+  ## Get the latest safe index to use as a new start index. The implication is
+  ## that anything prior to this index has been read and processed and can be
+  ## safely overwritten in the buffer.
   if vcl.bookmark.len > 0: vcl.bookmark[0] else: vcl.pos
 
 func isFull(vcl: VCardLexer): bool {.inline.} =
@@ -29,6 +48,8 @@ func atEnd(vcl: VCardLexer): bool {.inline.} =
   vcl.pos == vcl.bufEnd
 
 proc doubleBuffer(vcl: var VCardLexer) =
+  ## Double the capacity of the buffer, copying the contents of the current
+  ## buffer into the beginning of the newly expanded buffer.
   let oldBuf = vcl.buffer
   vcl.buffer = newString(oldBuf.len * 2)
 
@@ -40,13 +61,28 @@ proc doubleBuffer(vcl: var VCardLexer) =
     inc(newIdx)
     oldIdx = (newIdx + vcl.bufStart) mod oldBuf.len
 
+  # We know that for all existing indices, their location in the new buffer can
+  # be calculated as a function of the distance we moved the start of the
+  # buffer: `idx = idx + (newBufStart - oldBufStart)`. Since we know the new
+  # bufStart will be 0, we know that we can calculate all of the new indices as
+  # `idx -= oldBufStart` Currently vcl.bufStart is still the old bufStart.
   vcl.pos -= vcl.bufStart
   vcl.lineStart -= vcl.bufStart
   if vcl.bookmark.len > 0: vcl.bookmark[0] -= vcl.bufStart
+
+  # Now that we've updated all of the existing indices, we can reset the
+  # buffer start and end indices to their new values.
   vcl.bufStart = 0
   vcl.bufEnd = newIdx
 
 proc fillBuffer(vcl: var VCardLexer) =
+  ## Read data into the buffer from the underlying stream until the buffer is
+  ## full. If the buffer is already full, double the buffer beforehand.
+
+  # Note that we do not *completely* fill the buffer. We always leave one index
+  # of the array empty. This allows us to differentiate between an empty buffer
+  # (`bufStart == bufEnd`) and a completly full buffer (`bufStart ==
+  # wrappedIdx(bufEnd + 1)`).
 
   var charsRead: int
 
@@ -56,7 +92,10 @@ proc fillBuffer(vcl: var VCardLexer) =
   # discard used portions of the buffer
   vcl.bufStart = vcl.newStartIdx
 
+  # We have three conditions that the ring buffer may be in:
   if vcl.bufEnd < vcl.bufStart:
+    # The unused portion of the buffer is all in the middle and we can just
+    # read date into the space from bufEnd (e) to bufStart (s).
     #     e       s
     # 0 1 2 3 4 5 6 7 8 9
     charsRead = vcl.input.readDataStr(vcl.buffer,
@@ -64,6 +103,8 @@ proc fillBuffer(vcl: var VCardLexer) =
     vcl.bufEnd += charsRead
 
   elif vcl.bufStart == 0:
+    # The unused portion is entirely at the end of the buffer. We can read data
+    # from the bufEnd (e) to the end of our buffer capacity.
     # s           e
     # 0 1 2 3 4 5 6 7 8 9
     charsRead = vcl.input.readDataStr(vcl.buffer,
@@ -71,16 +112,24 @@ proc fillBuffer(vcl: var VCardLexer) =
     vcl.bufEnd = wrappedIdx(vcl.bufEnd + charsRead)
 
   else:
+    # The used portion of the buffer is in the middle, and the unused portion
+    # is on either side ot that. We need to read from bufEnd (e) to the end of
+    # our underlying buffer, and then from the start of our underlying buffer
+    # to bufStart (s)
     #     s       e
     # 0 1 2 3 4 5 6 7 8 9
     charsRead = vcl.input.readDataStr(vcl.buffer, vcl.bufEnd..<vcl.buffer.len)
     if charsRead == vcl.buffer.len - vcl.bufEnd:
+      # Only read into the front part of the buffer if we were able to
+      # completely fill the back part.
       vcl.bufEnd = vcl.input.readDataStr(vcl.buffer, 0 ..< (vcl.bufStart - 1))
 
 
 proc close*(vcl: var VCardLexer) = vcl.input.close
+  ## Close this VCardLexer and its underlying stream.
 
 proc open*(vcl: var VCardLexer, input: Stream, bufLen = 16384) =
+  ## Open the given stream and initialize the given VCardLexer to read from it.
   assert(bufLen > 0)
   assert(input != nil)
   vcl.input = input
@@ -95,10 +144,26 @@ proc open*(vcl: var VCardLexer, input: Stream, bufLen = 16384) =
   vcl.skipUtf8Bom
 
 proc setBookmark*(vcl: var VCardLexer) =
+  ## Set a bookmark into the lexer's buffer. This will prevent the lexer from
+  ## discarding data from this bookmark forward when it refills.
+  ##
+  ## The bookmark must be cleared using either `returnToBookmark` or
+  ## `unsetBookmark`, otherwise this lexer will no function as a streaming
+  ## lexer and will end up reading the entire remainder of the input stream
+  ## into memory (if it can).
+  ##
+  ## This function can be called multiple times in order to create nested
+  ## bookmarks. For example, we might set a bookmark at the beginning of a line
+  ## to be able to reset if we fail to parse the line, then set a bookmark
+  ## midway through when attempting to parse a parameter value. Care should be
+  ## taken when nesting bookmarks as all bookmarks must be released to avoid
+  ## the behavior described above.
   vcl.bookmark.add(vcl.pos)
   vcl.bookmarkVal.add(newStringOfCap(32))
 
 proc returnToBookmark*(vcl: var VCardLexer) =
+  ## Unset the most recent bookmark, resetting the lexer's read position to the
+  ## position of the bookmark.
   if vcl.bookmark.len == 0: return
   vcl.pos = vcl.bookmark.pop()
   let valRead = vcl.bookmarkVal.pop()
@@ -107,20 +172,28 @@ proc returnToBookmark*(vcl: var VCardLexer) =
       vcl.bookmarkVal[idx] = vcl.bookmarkVal[idx][0 ..< ^valRead.len]
 
 proc unsetBookmark*(vcl: var VCardLexer) =
+  ## Discard the most recent bookmark, leaving the lexer's read position at its
+  ## current position..
   if vcl.bookmark.len == 0: return
   discard vcl.bookmark.pop()
   discard vcl.bookmarkVal.pop()
 
 proc readSinceBookmark*(vcl: var VCardLexer): string =
+  ## Get the value read since the last bookmark.
   if vcl.bookmarkVal.len > 0:
     return vcl.bookmarkVal[^1]
   else: return ""
 
 proc isLineWrap(vcl: var VCardLexer, allowRefill = true): bool =
+  ## Answers the question "is this a folded line"? Transparently handles the
+  ## case where it needs to refill the buffer to answer this question.
   if vcl.buffer[vcl.pos] != '\r': return false
 
   # less than three characters in the buffer
   if wrappedIdx(vcl.pos + 3) > vcl.bufEnd:
+    # Only try to refill the buffer once. If we re-enter and still don't have
+    # three characters, we know we were unable to fill the buffer and are
+    # likely at the end.
     if allowRefill:
       vcl.fillBuffer()
       return vcl.isLineWrap(false)
@@ -132,6 +205,13 @@ proc isLineWrap(vcl: var VCardLexer, allowRefill = true): bool =
            vcl.buffer[wrappedIdx(vcl.pos + 2)] == ' '
 
 proc read*(vcl: var VCardLexer, peek = false): char =
+  ## Read one byte off of the input stream. By default this will advance the
+  ## lexer read position by one byte. If `peek` is set to `true`, this will
+  ## leave the read position at the same logical position. The underlying
+  ## buffer position may still change if, for example, the next byte is the
+  ## beginning of a folded line wrap. In this case the internal buffer position
+  ## will advance past that line wrap.
+
   if vcl.atEnd: vcl.fillBuffer()
 
   if vcl.isLineWrap:
@@ -141,7 +221,7 @@ proc read*(vcl: var VCardLexer, peek = false): char =
     vcl.lineVal = newStringOfCap(84)
     if vcl.atEnd: vcl.fillBuffer()
 
-  elif vcl.buffer[vcl.pos] == '\n':
+  elif vcl.buffer[vcl.pos] == '\n' and not peek:
     vcl.lineNumber += 1
     vcl.lineStart = wrappedIdx(vcl.pos + 1)
     vcl.lineVal = newStringOfCap(84)
@@ -153,10 +233,19 @@ proc read*(vcl: var VCardLexer, peek = false): char =
     vcl.pos = wrappedIdx(vcl.pos + 1)
 
 proc readLen*(vcl: var VCardLexer, bytesToRead: int, peek = false): string =
+  ## Convenience procedure to read multiple bytes (if able) and return the
+  ## value read.
   result = newStringOfCap(bytesToRead)
   for i in 0..<bytesToRead: result.add(vcl.read)
 
 proc readRune*(vcl: var VCardLexer, peek = false): Rune =
+  ## Read one unicode rune off of the input stream. By default this will
+  ## advance the lexer read position by the byte length of the rune read. If
+  ## `peek` is set to `true`, this will leave the read position at the same
+  ## logical position. The underlying buffer position may still change if, for
+  ## example, the next rune is the beginning of a folded line wrap. In this
+  ## case the internal buffer position will advance past that line wrap.
+
   if vcl.atEnd: vcl.fillBuffer()
 
   if vcl.isLineWrap:
@@ -178,16 +267,22 @@ proc readRune*(vcl: var VCardLexer, peek = false): Rune =
     vcl.pos += vcl.buffer.runeLenAt(vcl.pos)
 
 proc readRunesLen*(vcl: var VCardLexer, runesToRead: int, peek = false): string =
+  ## Convenience procedure to read multiple runes (if able) and return the
+  ## value read.
   result = newStringOfCap(runesToRead * 4)
   for i in 0..<runesToRead: result.add(vcl.readRune)
 
 proc peek*(vcl: var VCardLexer): char =
+  ## Convenience method to call `read(peek = true)`
   return vcl.read(peek = true)
 
 proc peekRune*(vcl: var VCardLexer): Rune =
+  ## Convenience method to call `read(peek = true)`
   return vcl.readRune(peek = true)
 
 proc getColNumber*(vcl: VCardLexer, pos: int): int =
+  ## Calculate the column number of the lexer's current read position relative
+  ## to the start of the most recent line.
   if vcl.lineStart < pos: return pos - vcl.lineStart
   else: return (vcl.buffer.len - vcl.lineStart) + pos
 
