@@ -115,21 +115,6 @@ proc readSinceBookmark*(vcl: var VCardLexer): string =
     return vcl.bookmarkVal[^1]
   else: return ""
 
-#[
-  if vcl.pos < vcl.bookmark:
-    #     p e   s b
-    # 0 1 2 3 4 5 6 7 8 9
-    result = newStringOfCap(vcl.buffer.len - vcl.bookmark + vcl.pos)
-  else:
-    #   s   b     p   e
-    # 0 1 2 3 4 5 6 7 8 9
-    result = newStringOfCap(vcl.pos - vcl.bookmark)
-
-  let curPos = vcl.pos
-  vcl.pos = vcl.bookmark
-  while vcl.pos != curPos: result.add(vcl.read)
-]#
-
 proc isLineWrap(vcl: var VCardLexer, allowRefill = true): bool =
   if vcl.buffer[vcl.pos] != '\r': return false
 
@@ -164,6 +149,10 @@ proc read*(vcl: var VCardLexer, peek = false): char =
       vcl.bookmarkVal[idx].add(result)
     vcl.pos = wrappedIdx(vcl.pos + 1)
 
+proc readLen*(vcl: var VCardLexer, bytesToRead: int, peek = false): string =
+  result = newStringOfCap(bytesToRead)
+  for i in 0..<bytesToRead: result.add(vcl.read)
+
 proc readRune*(vcl: var VCardLexer, peek = false): Rune =
   if vcl.atEnd: vcl.fillBuffer()
 
@@ -179,6 +168,10 @@ proc readRune*(vcl: var VCardLexer, peek = false): Rune =
 
   result = vcl.buffer.runeAt(vcl.pos)
   if not peek: vcl.pos += vcl.buffer.runeLenAt(vcl.pos)
+
+proc readRunesLen*(vcl: var VCardLexer, runesToRead: int, peek = false): string =
+  result = newStringOfCap(runesToRead * 4)
+  for i in 0..<runesToRead: result.add(vcl.readRune)
 
 proc peek*(vcl: var VCardLexer): char =
   return vcl.read(peek = true)
