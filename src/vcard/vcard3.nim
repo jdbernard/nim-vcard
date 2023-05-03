@@ -14,7 +14,7 @@ import std/[base64, genasts, macros, options, sequtils, streams, strutils,
 
 import zero_functional
 
-import ./private/[common, lexer, util]
+import ./private/[common, lexer]
 
 type
   VC3_ValueTypes = enum
