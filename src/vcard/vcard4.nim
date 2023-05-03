@@ -1,18 +1,13 @@
-import std/[genasts, macros, options, sets, streams, strutils, tables, times, unicode]
+import std/[algorithm, genasts, macros, options, sequtils, sets, streams,
+            strutils, tables, times, unicode]
 import zero_functional
 
-from std/sequtils import toSeq
+#from std/sequtils import toSeq
 
 import ./private/[common, lexer, util]
 
 type
-  VC4_Cardinality = enum
-    vccAtMostOne,
-    vccExactlyOne,
-    vccAtLeastOne
-    vccAny
-
-  VC4_ValueType = enum
+  VC4_ValueType* = enum
     vtText = "text",
     vtTextList = "text-list",
     vtUri = "uri",
@@ -74,43 +69,43 @@ type
     ## Non-standard, added to be a catch-all for non-standard names
     pnUnknown = "UNKNOWN"
 
-const propertyCardMap: Table[VC4_PropertyName, VC4_Cardinality] = [
-  (pnSource, vccAny),
-  (pnKind, vccAtMostOne),
-  (pnXml, vccAny),
-  (pnFn, vccAtLeastOne),
-  (pnN, vccAtMostOne),
-  (pnNickname, vccAny),
-  (pnPhoto, vccAny),
-  (pnBday, vccAtMostOne),
-  (pnAnniversary, vccAtMostOne),
-  (pnGender, vccAtMostOne),
-  (pnAdr, vccAny),
-  (pnTel, vccAny),
-  (pnEmail, vccAny),
-  (pnImpp, vccAny),
-  (pnLang, vccAny),
-  (pnTz, vccAny),
-  (pnGeo, vccAny),
-  (pnTitle, vccAny),
-  (pnRole, vccAny),
-  (pnLogo, vccAny),
-  (pnOrg, vccAny),
-  (pnMember, vccAny),
-  (pnRelated, vccAny),
-  (pnCategories, vccAny),
-  (pnNote, vccAny),
-  (pnProdId, vccAtMostOne),
-  (pnRev, vccAtMostOne),
-  (pnSound, vccAny),
-  (pnUid, vccAtMostOne),
-  (pnClientPidMap, vccAny),
-  (pnUrl, vccAny),
-  (pnVersion, vccExactlyOne),
-  (pnKey, vccAny),
-  (pnFbUrl, vccAny),
-  (pnCaladrUri, vccAny),
-  (pnCalUri, vccAny)
+const propertyCardMap: Table[VC4_PropertyName, VC_PropCardinality] = [
+  (pnSource, vpcAny),
+  (pnKind, vpcAtMostOne),
+  (pnXml, vpcAny),
+  (pnFn, vpcAtLeastOne),
+  (pnN, vpcAtMostOne),
+  (pnNickname, vpcAny),
+  (pnPhoto, vpcAny),
+  (pnBday, vpcAtMostOne),
+  (pnAnniversary, vpcAtMostOne),
+  (pnGender, vpcAtMostOne),
+  (pnAdr, vpcAny),
+  (pnTel, vpcAny),
+  (pnEmail, vpcAny),
+  (pnImpp, vpcAny),
+  (pnLang, vpcAny),
+  (pnTz, vpcAny),
+  (pnGeo, vpcAny),
+  (pnTitle, vpcAny),
+  (pnRole, vpcAny),
+  (pnLogo, vpcAny),
+  (pnOrg, vpcAny),
+  (pnMember, vpcAny),
+  (pnRelated, vpcAny),
+  (pnCategories, vpcAny),
+  (pnNote, vpcAny),
+  (pnProdId, vpcAtMostOne),
+  (pnRev, vpcAtMostOne),
+  (pnSound, vpcAny),
+  (pnUid, vpcAtMostOne),
+  (pnClientPidMap, vpcAny),
+  (pnUrl, vpcAny),
+  (pnVersion, vpcExactlyOne),
+  (pnKey, vpcAny),
+  (pnFbUrl, vpcAny),
+  (pnCaladrUri, vpcAny),
+  (pnCalUri, vpcAny)
 ].toTable()
 
 const fixedValueTypeProperties = [
@@ -156,25 +151,26 @@ const fixedValueTypeProperties = [
   (pnCalUri, vtUri)
 ]
 
-const supportedParameters: Table[string, HashSet[VC4_PropertyName]] = [
+const supportedParams: Table[string, HashSet[VC4_PropertyName]] = [
   ("LANGUAGE", [pnFn, pnN, pnNickname, pnBday, pnAdr, pnTitle, pnRole,
     pnLogo, pnOrg, pnRelated, pnNote, pnSound].toHashSet),
 
   ("PREF", (propertyCardMap.pairs.toSeq -->
-    filter(it[1] == vccAtLeastOne or it[1] == vccAny).
+    filter(it[1] == vpcAtLeastOne or it[1] == vpcAny).
     map(it[0])).
     toHashSet),
 
   # ("ALTID", all properties),
 
   ("PID", (propertyCardMap.pairs.toSeq -->
-    filter((it[1] == vccAtLeastOne or it[1] == vccAny) and
+    filter((it[1] == vpcAtLeastOne or it[1] == vpcAny) and
             it[0] != pnClientPidMap).
     map(it[0])).toHashSet),
 
   ("TYPE", @[ pnFn, pnNickname, pnPhoto, pnAdr, pnTel, pnEmail, pnImpp, pnLang,
     pnTz, pnGeo, pnTitle, pnRole, pnLogo, pnOrg, pnRelated, pnCategories,
     pnNote, pnSound, pnUrl, pnKey, pnFburl, pnCaladrUri, pnCalUri ].toHashSet),
+
 ].toTable
 
 const TIMESTAMP_FORMATS = [
@@ -184,8 +180,12 @@ const TIMESTAMP_FORMATS = [
   "yyyyMMdd'T'hhmmss"
 ]
 
+const TEXT_CHARS = WSP + NON_ASCII + { '\x21'..'\x2B', '\x2D'..'\x7E' }
+const COMPONENT_CHARS = WSP + NON_ASCII +
+  { '\x21'..'\x2B', '\x2D'..'\x3A', '\x3C'..'\x7E' }
+
 macro genPropTypes(
-    props: static[openarray[ tuple[a: VC4_PropertyName, b: VC4_ValueType]]]
+    props: static[openarray[(VC4_PropertyName, VC4_ValueType)]]
   ): untyped =
 
   result = newNimNode(nnkTypeSection)
@@ -230,7 +230,6 @@ type
     group*: Option[string]
     params*: seq[VCParam]
 
-  # TODO: write accessors
   VC4_DateTimeOrTextProperty* = ref object of VC4_Property
     valueType: VC4_ValueType # should only be vtDateAndOrTime or vtText
     value*: string
@@ -259,7 +258,7 @@ type
   VC4_DateTimeProperty* = ref object of VC4_Property
     value*: DateTime
 
-  VC4_UnknownProperty* = ref object of VC4_Property
+  VC4_Unknown* = ref object of VC4_Property
     name*: string
     value*: string
 
@@ -332,7 +331,7 @@ type
 
   VC4_Gender* = ref object of VC4_Property
     sex*: Option[VC4_Sex]
-    gender*: Option[string]
+    genderIdentity*: Option[string]
 
   VC4_Adr* = ref object of VC4_Property
     poBox*: string
@@ -366,11 +365,9 @@ func flattenParameters(
   ): seq[VCParam] =
 
   let paramTable = newTable[string, seq[string]]()
-  let allParams: seq[VCParam] =
-    params &
-    addtlParams.toSeq --> filter(it.values.len > 0)
+  let allParams = params & toSeq(addtlParams)
 
-  for p in allParams:
+  for p in (allParams --> filter(it.values.len > 0)):
     let pname = p.name.toUpper
     if paramTable.contains(pname):
       for v in p.values:
@@ -388,6 +385,7 @@ proc parseDateAndOrTime[T](
     value: string
   ): void =
 
+  prop.value = value
   var p = VCardParser(filename: value)
 
   try:
@@ -404,30 +402,32 @@ proc parseDateAndOrTime[T](
     if p.peek != 'T':
       # Attempt to parse the year
       if p.peek == '-': p.expect("--")
-      else: prop.year = some(parseInt(p.read & p.read))
+      else: prop.year = some(parseInt(p.readLen(4)))
 
       # Attempt to parse the month
       if DIGIT.contains(p.peek) or p.peek == '-':
         if p.peek == '-': p.expect("-")
-        else: prop.month = some(parseInt(p.read & p.read))
+        else: prop.month = some(parseInt(p.readLen(2)))
 
         # Attempt to parse the month
         if DIGIT.contains(p.peek):
-          prop.day = some(parseInt(p.read & p.read))
+          prop.day = some(parseInt(p.readLen(2)))
 
     if p.peek == 'T':
+      p.expect("T")
+
       # Attempt to parse the hour
       if p.peek == '-': p.expect("-")
-      else: prop.hour = some(parseInt(p.read & p.read))
+      else: prop.hour = some(parseInt(p.readLen(2)))
 
       # Attempt to parse the minute
       if DIGIT.contains(p.peek) or p.peek == '-':
         if p.peek == '-': p.expect("-")
-        else: prop.minute = some(parseInt(p.read & p.read))
+        else: prop.minute = some(parseInt(p.readLen(2)))
 
         # Attempt to parse the second
         if DIGIT.contains(p.peek):
-          prop.second = some(parseInt(p.read & p.read))
+          prop.second = some(parseInt(p.readLen(2)))
 
           # Attempt to parse the timezone
           if {'-', '+', 'Z'}.contains(p.peek):
@@ -445,8 +445,32 @@ proc parseDateAndOrTime[T](
     p.error("unable to parse date-and-or-time value: " & p.readSinceBookmark)
   finally: p.unsetBookmark
 
+proc parseTimestamp(value: string): DateTime =
+  for fmt in TIMESTAMP_FORMATS:
+    try: return value.parse(fmt)
+    except: discard
+  raise newException(VCardParsingError, "unable to parse timestamp value: " & value)
+
+func parsePidValues(param: VCParam): seq[PidValue]
+  {.raises:[VCardParsingError].} =
+
+  result = @[]
+  for v in param.values:
+    try:
+      let pieces = v.split(".")
+      if pieces.len != 2: raise newException(ValueError, "")
+      result.add(PidValue(
+        propertyId: parseInt(pieces[0]),
+        sourceId: parseInt(pieces[1])))
+    except ValueError:
+      raise newException(VCardParsingError, "PID value expected to be two " &
+        "integers separated by '.' (2.1 for example)")
+
 template validateType(p: VCardParser, params: seq[VCParam], t: VC4_ValueType) =
   p.validateRequiredParameters(params, [("VALUE", $t)])
+
+func cmp[T: VC4_Property](x, y: T): int =
+  return cmp(x.pref, y.pref)
 
 # Initializers
 # =============================================================================
@@ -481,7 +505,7 @@ func addConditionalParams(prop: VC4_PropertyName, funcDef: NimNode) =
       raise newException(ValueError, "cannot generate conditional params " &
         "initialization code for this function shape:\n\r " & funcDef.treeRepr)
 
-  if supportedParameters["LANGUAGE"].contains(prop):
+  if supportedParams["LANGUAGE"].contains(prop):
     # Add "language" as a function parameter
     formalParams.add(newIdentDefs(
       ident("language"),
@@ -491,7 +515,7 @@ func addConditionalParams(prop: VC4_PropertyName, funcDef: NimNode) =
     paramsInit.add(quote do:
       ("LANGUAGE", if language.isSome: @[language.get] else: @[]))
 
-  if supportedParameters["PREF"].contains(prop):
+  if supportedParams["PREF"].contains(prop):
     # Add "pref" and "pids" as function parameters
     formalParams.add(newIdentDefs(
       ident("pref"),
@@ -502,7 +526,7 @@ func addConditionalParams(prop: VC4_PropertyName, funcDef: NimNode) =
       ("PREF", if pref.isSome: @[$pref.get] else: @[]))
 
 
-  if supportedParameters["PID"].contains(prop):
+  if supportedParams["PID"].contains(prop):
     # Add "pids" as a function parameter
     formalParams.add(newIdentDefs(
       ident("pids"),
@@ -514,7 +538,7 @@ func addConditionalParams(prop: VC4_PropertyName, funcDef: NimNode) =
     paramsInit.add(quote do: ("PID", pids --> map($it)))
 
 
-  if supportedParameters["TYPE"].contains(prop):
+  if supportedParams["TYPE"].contains(prop):
     # Add "type" as a function parameter
     formalParams.add(newIdentDefs(
       ident("types"),
@@ -526,21 +550,29 @@ func addConditionalParams(prop: VC4_PropertyName, funcDef: NimNode) =
     paramsInit.add(quote do: ("TYPE", types))
 
 func namesForProp(prop: VC4_PropertyName):
-    tuple[enumName, funcName, typeName: NimNode] =
+    tuple[enumName, typeName, initFuncName, accessorName: NimNode] =
 
   var name: string = $prop
   if name.len > 1: name = name[0] & name[1..^1].toLower
-  return (ident("pn" & name), ident("newVC4_" & name), ident("VC4_" & name))
+  return (
+    ident("pn" & name),
+    ident("VC4_" & name),
+    ident("newVC4_" & name),
+    ident(name.toLower))
 
 macro genDateTimeOrTextPropInitializers(
     properties: static[openarray[VC4_PropertyName]]
   ): untyped =
 
+  # TODO: the below does not provide for the case where you want to initialize
+  # a property with a date-and-or-time value that is not a specific DateTime
+  # instant (for example, a truncated date like "BDAY:--1224", a birthday on
+  # Dec. 24th without specifying the year.
   result = newStmtList()
   for prop in properties:
-    let (enumName, funcName, typeName) = namesForProp(prop)
-    let datetimeFuncDef = genAstOpt({kDirtyTemplate}, enumName, funcName, typeName):
-      func funcName*(
+    let (enumName, typeName, initFuncName, _) = namesForProp(prop)
+    let datetimeFuncDef = genAstOpt({kDirtyTemplate}, enumName, initFuncName, typeName):
+      func initFuncName*(
           value: DateTime,
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
@@ -559,9 +591,10 @@ macro genDateTimeOrTextPropInitializers(
           timezone: some(value.format("ZZZ")),
           valueType: vtDateAndOrTime)
 
-    let textFuncDef = genAstOpt({kDirtyTemplate}, enumName, funcName, typeName):
-      proc funcName*(
+    let textFuncDef = genAstOpt({kDirtyTemplate}, enumName, initFuncName, typeName):
+      proc initFuncName*(
           value: string,
+          valueType: Option[string] = some($vtDateAndOrTime),
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
           params: seq[VCParam] = @[]): typeName =
@@ -572,7 +605,8 @@ macro genDateTimeOrTextPropInitializers(
           value: value,
           valueType: vtText)
 
-        result.parseDateAndOrTime(value)
+        if valueType.isNone or valueType.get == $vtDateAndOrTime:
+          result.parseDateAndOrTime(value)
 
     addConditionalParams(prop, datetimeFuncDef)
     addConditionalParams(prop, textFuncDef)
@@ -585,9 +619,9 @@ macro genTextPropInitializers(
 
   result = newStmtList()
   for prop in properties:
-    let (enumName, funcName, typeName) = namesForProp(prop)
-    let funcDef = genAstOpt({kDirtyTemplate}, enumName, funcName, typeName):
-      func funcName*(
+    let (enumName, typeName, initFuncName, _) = namesForProp(prop)
+    let funcDef = genAstOpt({kDirtyTemplate}, enumName, initFuncName, typeName):
+      func initFuncName*(
           value: string,
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
@@ -608,9 +642,9 @@ macro genTextListPropInitializers(
   result = newStmtList()
 
   for prop in properties:
-    let (enumName, funcName, typeName) = namesForProp(prop)
-    let funcDef = genAstOpt({kDirtyTemplate}, enumName, funcName, typeName):
-      func funcName*(
+    let (enumName, typeName, initFuncName, _) = namesForProp(prop)
+    let funcDef = genAstOpt({kDirtyTemplate}, enumName, initFuncName, typeName):
+      func initFuncName*(
           value: seq[string],
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
@@ -630,9 +664,9 @@ macro genTextOrUriPropInitializers(
 
   result = newStmtList()
   for prop in properties:
-    let (enumName, funcName, typeName) = namesForProp(prop)
-    let funcDef = genAstOpt({kDirtyTemplate}, enumName, funcName, typeName):
-      func funcName*(
+    let (enumName, typeName, initFuncName, _) = namesForProp(prop)
+    let funcDef = genAstOpt({kDirtyTemplate}, enumName, initFuncName, typeName):
+      func initFuncName*(
           value: string,
           isUrl = false,
           altId: Option[string] = none[string](),
@@ -653,9 +687,9 @@ macro genUriPropInitializers(
 
   result = newStmtList()
   for prop in properties:
-    let (enumName, funcName, typeName) = namesForProp(prop)
-    let funcDef = genAstOpt({kDirtyTemplate}, enumName, funcName, typeName):
-      func funcName*(
+    let (enumName, typeName, initFuncName, _) = namesForProp(prop)
+    let funcDef = genAstOpt({kDirtyTemplate}, enumName, initFuncName, typeName):
+      func initFuncName*(
           value: string,
           altId: Option[string] = none[string](),
           mediaType: Option[string] = none[string](),
@@ -703,7 +737,7 @@ func newVC4_N*(
 
 func newVC4_Gender*(
     sex: Option[VC4_Sex] = none[VC4_Sex](),
-    gender: Option[string] = none[string](),
+    genderIdentity: Option[string] = none[string](),
     altId: Option[string] = none[string](),
     group: Option[string] = none[string](),
     params: seq[VCParam] = @[]): VC4_Gender =
@@ -711,7 +745,7 @@ func newVC4_Gender*(
   return assignFields(
     VC4_Gender(params: flattenParameters(params,
       ("ALTID", if altId.isSome: @[altId.get] else: @[]))),
-    sex, gender, group)
+    sex, genderIdentity, group)
 
 func newVC4_Adr*(
     poBox = "",
@@ -769,6 +803,118 @@ func newVC4_Rev*(
 # Accessors
 # =============================================================================
 
+macro genPropAccessors(
+    properties: static[openarray[(VC4_PropertyName, VC_PropCardinality)]]
+  ): untyped =
+
+  result = newStmtList()
+  for (pn, pCard) in properties:
+    let (_, typeName, _, funcName) = namesForProp(pn)
+
+    case pCard:
+    of vpcAtMostOne:
+      let funcDef = genAstOpt({kDirtyTemplate}, funcName, pn, typeName):
+        func funcName*(vc4: VCard4): Option[typeName] =
+          let alts = allAlternatives[typeName](vc4)
+          if alts.len > 1:
+            raise newException(ValueError,
+              ("VCard should have at most one $# property, but $# " &
+               "distinct properties were found") % [$pn, $alts.len])
+
+          if alts.len == 0: result = none[typeName]()
+          else: result = some(alts[toSeq(alts.keys)[0]][0])
+
+      result.add(funcDef)
+
+    of vpcExactlyOne:
+      let funcDef = genAstOpt({kDirtyTemplate}, funcName, pn, typeName):
+        func funcName*(vc4: VCard4): typeName =
+          let alts = allAlternatives[typeName](vc4)
+          if alts.len != 1:
+            raise newException(ValueError,
+              "VCard should have exactly one $# property, but $# were found" %
+                [$pn, $alts.len])
+          result = alts[toSeq(alts.keys)[0]][0]
+
+      result.add(funcDef)
+
+    of vpcAtLeastOne, vpcAny:
+      let funcDef = genAstOpt({kDirtyTemplate}, funcName, typeName):
+        func funcName*(vc4: VCard4): seq[typeName] =
+          result = findAll[typeName](vc4.content)
+      result.add(funcDef)
+
+macro genNameAccessors(propNames: static[seq[VC4_PropertyName]]): untyped =
+  result = genAstOpt({kDirtyTemplate}):
+    func name*(p: VC4_Property): string =
+      if p of VC4_Unknown:
+        return cast[VC4_Unknown](p).name
+
+  let genericIfBlock = result[6][0]
+
+  let memSafePNs = propNames
+  let propNamesToProcess = (memSafePNs --> filter(it != pnUnknown))
+  for pn in propNamesToProcess:
+    let (enumName, typeName, _, _) = namesForProp(pn)
+
+    let genericCond = nnkElifExpr.newTree(
+      nnkInfix.newTree(ident("of"), ident("p"), typeName),
+      quote do: return $`enumName`)
+
+    genericIfBlock.add(genericCond)
+
+  # echo result.repr
+
+macro genLanguageAccessors(props: static[openarray[VC4_PropertyName]]): untyped =
+
+  result = newStmtList()
+
+  for p in props:
+    var name = $p
+    if name.len > 1: name = name[0] & name[1..^1].toLower
+    let typeName = ident("VC4_" & name)
+
+    let langFunc = genAstOpt({kDirtyTemplate}, typeName):
+      func language*(prop: typeName): Option[string] =
+        let langParam = prop.params --> find(it.name == "LANGUAGE")
+        if langParam.isSome and langParam.get.values.len > 0:
+          return some(langParam.get.values[0])
+        else: return none[string]()
+    result.add(langFunc)
+
+macro genPrefAccessors(props: static[openarray[VC4_PropertyName]]): untyped =
+
+  result = newStmtList()
+
+  for p in props:
+    var name = $p
+    if name.len > 1: name = name[0] & name[1..^1].toLower
+    let typeName = ident("VC4_" & name)
+
+    let prefFunc = genAstOpt({kDirtyTemplate}, typeName):
+      func pref*(prop: typeName): int =
+        let prefParam = prop.params --> find(it.name == "PREF")
+        if prefParam.isSome and prefParam.get.values.len > 0:
+          return parseInt(prefParam.get.values[0])
+        else: return 101
+    result.add(prefFunc)
+
+macro genPidAccessors(props: static[openarray[VC4_PropertyName]]): untyped =
+
+  result = newStmtList()
+
+  for p in props:
+    var name = $p
+    if name.len > 1: name = name[0] & name[1..^1].toLower
+    let typeName = ident("VC4_" & name)
+
+    let pidFunc = genAstOpt({kDirtyTemplate}, typeName):
+      func pid*(prop: typeName): seq[PidValue] =
+        let pidParam = prop.params --> find(it.name == "PREF")
+        if pidParam.isSome: return parsePidValues(pidParam.get)
+        else: return @[]
+    result.add(pidFunc)
+
 macro genTypeAccessors(props: static[openarray[VC4_PropertyName]]): untyped =
 
   result = newStmtList()
@@ -785,43 +931,41 @@ macro genTypeAccessors(props: static[openarray[VC4_PropertyName]]): untyped =
         else: return @[]
     result.add(typeFun)
 
-genTypeAccessors(supportedParameters["TYPE"].toSeq())
+func inPrefOrder*[T: VC4_Property](props: seq[T]): seq[T] =
+  return props.sorted(vcard4.cmp[T])
 
-macro genNameAccessors(propNames: static[seq[VC4_PropertyName]]): untyped =
-  result = newStmtList()
+func altId*(p: VC4_Property): Option[string] =
+  p.params.getSingleValue("ALTID")
 
-  let genericFunc = genAstOpt({kDirtyTemplate}):
-    func name*(p: VC4_Property): string =
-      if p of VC4_UnknownProperty:
-        return cast[VC4_UnknownProperty](p).name
+func valueType*(p: VC4_Property): Option[string] =
+  p.params.getSingleValue("VALUE")
 
-  let genericIfBlock = genericFunc[6][0]
-  result.add(genericFunc)
+func allAlternatives*[T](vc4: VCard4): Table[string, seq[T]] =
+  result = initTable[string, seq[T]]()
 
-  block:
-    let funcDef = genAstOpt({kDirtyTemplate}):
-      func name*(p: VC4_UnknownProperty): string = p.name
+  for p in vc4.content:
+    if p of T:
+      let altId =
+        if p.altId.isSome: p.altId.get
+        else: ""
 
-    result.add(funcDef)
+      if not result.contains(altId): result[altId] = @[cast[T](p)]
+      else: result[altId].add(cast[T](p))
 
-  let memSafePNs = propNames
-  let propNamesToProcess = (memSafePNs --> filter(it != pnUnknown))
-  for pn in propNamesToProcess:
-    let (enumName, _, typeName) = namesForProp(pn)
-
-    let genericCond = nnkElifExpr.newTree(
-      nnkInfix.newTree(ident("of"), ident("p"), typeName),
-      quote do: return $`enumName`)
-
-    let funcDef = genAstOpt({kDirtyTemplate}, enumName, typeName):
-      func name*(p: typeName): string = $enumName
-
-    result.add(funcDef)
-    genericIfBlock.add(genericCond)
-
-  # echo result.repr
+genPropAccessors(propertyCardMap.pairs.toSeq -->
+  filter(not [pnVersion, pnUnknown].contains(it[0])))
 
 genNameAccessors(toSeq(VC4_PropertyName))
+
+func customProp*(vc4: VCard4, name: string): seq[VC4_Unknown] =
+  result = vc4.content -->
+    filter(it of VC4_Unknown and it.name == name).
+    map(cast[VC4_Unknown](it))
+
+genLanguageAccessors(supportedParams["LANGUAGE"].toSeq())
+genPidAccessors(supportedParams["PID"].toSeq())
+genPrefAccessors(supportedParams["PREF"].toSeq())
+genTypeAccessors(supportedParams["TYPE"].toSeq())
 
 # Setters
 # =============================================================================
@@ -851,49 +995,119 @@ func updateOrAdd*[T: VC4_Property](vc4: VCard4, content: seq[T]): VCard4 =
 
 # Ouptut
 # =============================================================================
-#func serialize(p: VC4_Property): string =
-#  if c of
+
+func nameWithGroup(s: VC4_Property): string =
+  if s.group.isSome: s.group.get & "." & s.name
+  else: s.name
+
+macro genSerializers(
+    props: static[openarray[(VC4_PropertyName, VC4_ValueType)]]
+  ): untyped =
+
+  result = newStmtList()
+
+  for (pn, pt) in props:
+    let (enumName, typeName, _, _) = namesForProp(pn)
+
+    case pt
+    of vtText, vtTextOrUri, vtUri, vtDateTimeOrText:
+      let funcDef = genAstOpt({kDirtyTemplate}, enumName, typeName):
+        func serialize*(p: typeName): string =
+          result =
+            p.nameWithGroup &
+            serialize(p.params) &
+            ":" & serializeValue(p.value)
+      result.add(funcDef)
+
+    of vtTextList:
+      let funcDef = genAstOpt({kDirtyTemplate}, enumName, typeName):
+        func serialize*(p: typeName): string =
+          result = p.nameWithGroup & serialize(p.params) &
+            serialize(p.params) & ":" &
+            (p.value --> map(serializeValue(it))).join(",")
+      result.add(funcDef)
+
+    else:
+      raise newException(ValueError, "serializer for " & $pn &
+        " properties must be hand-written")
+
+macro genGenericSerializer(props: static[openarray[VC4_PropertyName]]): untyped =
+  result = genAstOpt({kDirtyTemplate}):
+    func serialize*(c: VC4_Property): string
+
+  let ifExpr = nnkIfExpr.newTree()
+
+  for p in props:
+    let (_, typeName, _, _) = namesForProp(p)
+
+    let returnStmt = genAstOpt({kDirtyTemplate}, typeName):
+      return serialize(cast[typeName](c))
+
+    ifExpr.add(nnkElifBranch.newTree(
+      nnkInfix.newTree(ident("of"), ident("c"), typeName),
+      returnStmt))
+
+  result[6] = newStmtList(ifExpr)
+
+func serializeParamValue(value: string): string =
+  result = value.multiReplace([("\n", "^n"), ("^", "^^"), ("\"", "^'")])
+
+  for c in result:
+    if not SAFE_CHARS.contains(c):
+      result = "\"" & result & "\""
+      break
+
+func serialize(params: seq[VCParam]): string =
+  result = ""
+  for pLent in params:
+    let p = pLent
+    result &= ";" & p.name & "=" & (p.values -->
+      map(serializeParamValue(it))).join(",")
+
+func serializeValue(value: string): string =
+  result = value.multiReplace(
+    [(",", "\\,"), (";", "\\;"), ("\\", "\\\\"),("\n", "\\n")])
+
+func serialize*(n: VC4_N): string =
+  result = "N" & serialize(n.params) & ":" &
+    (n.family --> map(serializeValue(it))).join(",") & ";" &
+    (n.given --> map(serializeValue(it))).join(",") & ";" &
+    (n.additional --> map(serializeValue(it))).join(",") & ";" &
+    (n.prefixes --> map(serializeValue(it))).join(",") & ";" &
+    (n.suffixes --> map(serializeValue(it))).join(",")
+
+func serialize*(a: VC4_Adr): string =
+  result = "ADR" & serialize(a.params) & ":" &
+    a.poBox & ";" & a.ext & ";" & a.street & ";" & a.locality & ";" &
+    a.region & ";" & a.postalCode & ";" & a.country
+
+func serialize*(g: VC4_Gender): string =
+  result = "GENDER" & serialize(g.params) & ":"
+  if g.sex.isSome: result &= $g.sex.get
+  if g.genderIdentity.isSome: result &= ";" & g.genderIdentity.get
+
+func serialize*(r: VC4_Rev): string =
+  result = "REV" & serialize(r.params) &
+    ":" & r.value.format(TIMESTAMP_FORMATS[0])
+
+func serialize*(c: VC4_ClientPidMap): string =
+  result = "CLIENTPIDMAP" & serialize(c.params) & ":" & $c.id & ";" & c.uri
+
+genSerializers(fixedValueTypeProperties.toSeq & @[(pnUnknown, vtText)])
+genGenericSerializer(toSeq(VC4_PropertyName))
 
 func `$`*(pid: PidValue): string = $pid.propertyId & "." & $pid.sourceId
 
-#[
 func `$`*(vc4: VCard4): string =
   result = "BEGIN:VCARD" & CRLF
   result &= "VERSION:4.0" & CRLF
   for p in (vc4.content --> filter(not (it of VC4_Version))):
     result &= foldContentLine(serialize(p)) & CRLF
   result &= "END:VCARD" & CRLF
-]#
 
 
 # Parsing
 # =============================================================================
-
-const TEXT_CHARS = WSP + NON_ASCII + { '\x21'..'\x2B', '\x2D'..'\x7E' }
-const QSAFE_CHARS = WSP + { '\x21', '\x23'..'\x7E' } + NON_ASCII
-const COMPONENT_CHARS = WSP + NON_ASCII +
-  { '\x21'..'\x2B', '\x2D'..'\x3A', '\x3C'..'\x7E' }
-
-func parsePidValues(param: VCParam): seq[PidValue]
-  {.raises:[VCardParsingError].} =
-
-  result = @[]
-  for v in param.values:
-    try:
-      let pieces = v.split(".")
-      if pieces.len != 2: raise newException(ValueError, "")
-      result.add(PidValue(
-        propertyId: parseInt(pieces[0]),
-        sourceId: parseInt(pieces[1])))
-    except ValueError:
-      raise newException(VCardParsingError, "PID value expected to be two " &
-        "integers separated by '.' (2.1 for example)")
-
-proc parseTimestamp(value: string): DateTime =
-  for fmt in TIMESTAMP_FORMATS:
-    try: return value.parse(fmt)
-    except: discard
-  raise newException(VCardParsingError, "unable to parse timestamp value: " & value)
 
 proc readParamValue(p: var VCardParser): string =
   ## Read a single parameter value at the current read position or error. Note
@@ -930,9 +1144,6 @@ proc readParamValue(p: var VCardParser): string =
   if quoted and p.read != '"':
     p.error("quoted parameter value expected to end with a " &
       "double quote (\")")
-
-  if result.len == 0:
-    p.error("expected to read a parameter value")
 
 proc readParams(p: var VCardParser): seq[VCParam] =
   result = @[]
@@ -1030,7 +1241,7 @@ proc readTextValueList(
   while seps.contains(p.peek): result.add(p.readTextValue(ignorePrefix = seps))
 
 macro genPropParsers(
-    genProps: static[openarray[tuple[a: VC4_PropertyName, b: VC4_ValueType]]],
+    genProps: static[openarray[(VC4_PropertyName, VC4_ValueType)]],
     group: Option[string],
     name: string,
     params: seq[VCParam],
@@ -1049,7 +1260,7 @@ macro genPropParsers(
     parseEnum[VC4_PropertyName](name, pnUnknown))
 
   for (pn, pt) in genProps:
-    let (enumName, initFuncName, typeName) = namesForProp(pn)
+    let (enumName, typeName, initFuncName, _) = namesForProp(pn)
 
     let parseCase = nnkOfBranch.newTree(quote do: `enumName`, newEmptyNode())
     result.add(parseCase)
@@ -1057,7 +1268,7 @@ macro genPropParsers(
     case pt
     of vtDateTimeOrText:
       parseCase[1] = genAst(contents, initFuncName, typeName, p):
-        let valueType = params.getSingleValue("TYPE")
+        let valueType = params.getSingleValue("VALUE")
         if valueType.isSome and valueType.get != $vtDateAndOrTime and
            valueType.get != $vtText:
           p.error("VALUE must be either \"date-and-or-time\" or \"text\" for " &
@@ -1065,11 +1276,12 @@ macro genPropParsers(
 
         contents.add(initFuncName(
           value = p.readValue,
+          valueType = valueType,
           group = group,
           params = params))
 
     of vtText:
-      parseCase[1] = genAst(contents, typeName):
+      parseCase[1] = genAst(contents, typeName, pt):
         p.validateType(params, pt)
         contents.add(ac(typeName(value: p.readTextValue)))
 
@@ -1080,17 +1292,17 @@ macro genPropParsers(
 
     of vtTextOrUri:
       parseCase[1] = genAst(contents, typeName):
-        let valueType = params.getSingleValue("TYPE")
+        let valueType = params.getSingleValue("VALUE")
         if valueType.isNone or valueType.get == $vtUri:
           contents.add(ac(typeName(value: p.readValue)))
         elif valueType.isSome and valueType.get == $vtText:
           contents.add(ac(typeName(value: p.readTextValue)))
         else:
-          p.error("VALUE must be either \"text\" or \"uri\" for " & name &
-            " properties.")
+          p.error(("VALUE must be either \"text\" or \"uri\" for $# " &
+            "properties (was $#).") % [name, $valueType])
 
     of vtUri:
-      parseCase[1] = genAst(typeName, contents):
+      parseCase[1] = genAst(typeName, contents, pt):
         p.validateType(params, pt)
         contents.add(ac(typeName(value: p.readValue)))
 
@@ -1126,10 +1338,10 @@ macro genPropParsers(
 
       contents.add(ac(VC4_Gender(
         sex: sex,
-        gender:
-          if sexCh == ';' or sex.isSome: some(p.readTextValue)
+        genderIdentity:
+          if sexCh == ';' or p.peek == ';':
+            some(p.readTextValue(ignorePrefix = {';'}))
           else: none[string]())))
-
 
   block:  # ADR
     let parseCase = nnkOfBranch.newTree(ident("pnAdr"), newEmptyNode())
@@ -1164,7 +1376,7 @@ macro genPropParsers(
     let parseCase = nnkOfBranch.newTree(ident("pnUnknown"), newEmptyNode())
     result.add(parseCase)
     parseCase[1] = genAst(contents):
-      contents.add(ac(VC4_UnknownProperty(name: name, value: p.readValue)))
+      contents.add(ac(VC4_Unknown(name: name, value: p.readValue)))
   # echo result.repr
 
 proc parseContentLines*(p: var VCardParser): seq[VC4_Property] =
@@ -1181,40 +1393,7 @@ proc parseContentLines*(p: var VCardParser): seq[VC4_Property] =
 
     genPropParsers(fixedValueTypeProperties, group, name, params, result, p)
 
-    #[
-    of $pnNickname:
-    of $pnPhoto:
-    of $pnBday:
-    of $pnAnniversary:
-    of $pnGender:
-    of $pnAdr:
-    of $pnTel:
-    of $pnEmail:
-    of $pnImpp:
-    of $pnLang:
-    of $pnTz:
-    of $pnGeo:
-    of $pnTitle:
-    of $pnRole:
-    of $pnLogo:
-    of $pnOrg:
-    of $pnMember:
-    of $pnRelated:
-    of $pnCategories:
-    of $pnNote:
-    of $pnProdId:
-    of $pnRev:
-    of $pnSound:
-    of $pnUid:
-    of $pnClientPidMap:
-    of $pnUrl:
-    of $pnVersion:
-    of $pnKey:
-    of $pnFbUrl:
-    of $pnCaladrUri:
-    of $pnCalUri:
-    ]#
-    #else: discard
+    p.expect(CRLF)
 
 
 # Private Function Unit Tests

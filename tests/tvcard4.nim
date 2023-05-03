@@ -1,4 +1,5 @@
-import options, unittest, zero_functional
+import std/[options, strutils, tables, unittest]
+import zero_functional
 
 import ./vcard
 import ./vcard/vcard4
@@ -7,3 +8,243 @@ suite "vcard/vcard4":
 
   test "vcard4/private tests":
     runVcard4PrivateTests()
+
+  let v4ExampleStr = readFile("tests/allen.foster.v4.vcf")
+
+  let testVCardTemplate =
+    "BEGIN:VCARD\r\n" &
+    "VERSION:4.0\r\n" &
+    "$#" &
+    "END:VCARD\r\n"
+
+  test "parseVCard4":
+    check parseVCards(v4ExampleStr).len == 1
+
+  test "parseVCard4File":
+    check parseVCardsFromFile("tests/allen.foster.v4.vcf").len == 1
+
+  # TODO: remove cast after finishing VCard4 implementation
+  let v4Ex = cast[VCard4](parseVCards(v4ExampleStr)[0])
+
+  test "RFC 6350 author's VCard":
+    let vcardStr =
+      "BEGIN:VCARD\r\n" &
+      "VERSION:4.0\r\n" &
+      "FN:Simon Perreault\r\n" &
+      "N:Perreault;Simon;;;ing. jr,M.Sc.\r\n" &
+      "BDAY:--0203\r\n" &
+      "ANNIVERSARY:20090808T1430-0500\r\n" &
+      "GENDER:M\r\n" &
+      "LANG;PREF=1:fr\r\n" &
+      "LANG;PREF=2:en\r\n" &
+      "ORG;TYPE=work:Viagenie\r\n" &
+      "ADR;TYPE=work:;Suite D2-630;2875 Laurier;\r\n" &
+      " Quebec;QC;G1V 2M2;Canada\r\n" &
+      "TEL;VALUE=uri;TYPE=\"work,voice\";PREF=1:tel:+1-418-656-9254;ext=102\r\n" &
+      "TEL;VALUE=uri;TYPE=\"work,cell,voice,video,text\":tel:+1-418-262-6501\r\n" &
+      "EMAIL;TYPE=work:simon.perreault@viagenie.ca\r\n" &
+      "GEO;TYPE=work:geo:46.772673,-71.282945\r\n" &
+      "KEY;TYPE=work;VALUE=uri:\r\n" &
+      " http://www.viagenie.ca/simon.perreault/simon.asc\r\n" &
+      "TZ:-0500\r\n" &
+      "URL;TYPE=home:http://nomis80.org\r\n" &
+      "END:VCARD\r\n"
+
+    let vcards = parseVCards(vcardStr)
+    check vcards.len == 1
+    let sp = cast[VCard4](vcards[0])
+    check:
+      sp.fn.len == 1
+      sp.fn[0].value == "Simon Perreault"
+      sp.gender.isSome
+      sp.gender.get.sex == some(VC4_Sex.Male)
+      sp.gender.get.genderIdentity.isNone
+      sp.lang.len == 2
+      sp.lang --> map(it.value) == @["fr", "en"]
+
+  test "custom properties are serialized":
+    let email = newVC4_Email(
+      value ="john.smith@testco.test",
+      types = @["work", "internet"],
+      params = @[("PREF", @["1"]), ("X-ATTACHMENT-LIMIT", @["25MB"])])
+
+    check serialize(email) ==
+      "EMAIL;X-ATTACHMENT-LIMIT=25MB;TYPE=work,internet;PREF=1:john.smith@testco.test"
+
+  test "can parse properties with escaped characters":
+    check v4Ex.note.len == 1
+    let note = v4Ex.note[0]
+
+    check note.value ==
+      "This is an example, for clarity; in text value cases the parser " &
+      "will recognize escape values for ',', '\\', and newlines. For " &
+      "example:" &
+      "\n\t123 Flagstaff Road" &
+      "\n\tPlaceville, MA"
+
+  test "can parse parameters with escaped characters":
+    let prop = v4Ex.customProp("X-CUSTOM-EXAMPLE")[0]
+    check prop.value ==
+      "This is an example, for clarity; in straight value cases, the parser " &
+      "does not recognize any escape values, as the meaning of the content " &
+      "is implementation-specific."
+    let param1 = prop.params --> filter(it.name == "PARAM")
+    let label = prop.params --> filter(it.name == "LABEL")
+    check:
+      param1.len == 1
+      param1[0].values == @["How one says, \"Hello.\""]
+      label.len == 1
+      label[0].values == @["^top\nsecond line"]
+
+  test "Data URIs are parsed correctly":
+    let expectedB64 = readFile("tests/allen.foster.jpg.uri")
+
+    check:
+      v4Ex.photo.len == 2
+      v4Ex.photo[0].altId == some("1")
+      v4Ex.photo[0].value ==
+        "https://tile.loc.gov/storage-services/service/pnp/bellcm/02200/02297r.jpg"
+      v4Ex.photo[0].valueType == some("uri")
+      v4Ex.photo[1].altId == some("1")
+      v4Ex.photo[1].value == expectedB64
+      v4Ex.photo[1].valueType.isNone
+
+  test "URI-type properties are parsed correctly":
+    # Covers SOURCE, PHOTO, IMPP, GEO, LOGO, MEMBER, SOUND, URL, FBURL,
+    # CALADRURI, and CALURI
+    check:
+      v4Ex.source.len == 1
+      v4Ex.source[0].value == "https://carddav.fosters.test/allen.vcf"
+      v4Ex.source[0].valueType == some("uri")
+      v4Ex.url.len == 1
+      v4Ex.url[0].value == "https://allen.fosters.test/"
+
+  test "URI-type properties are serialized correctly":
+    # Covers SOURCE, PHOTO, IMPP, GEO, LOGO, MEMBER, SOUND, URL, FBURL,
+    # CALADRURI, and CALURI
+    let src = newVC4_Source(value="https://carddav.example.test/john-smith.vcf")
+    check serialize(src) == "SOURCE:https://carddav.example.test/john-smith.vcf"
+
+  test "Single-text properties are parsed correctly":
+    # Covers KIND, XML, FN, NICKNAME, EMAIL, LANG, TZ, TITLE, ROLE, ORG, NOTE,
+    # PRODID, and VERSION
+    check:
+      v4Ex.kind.isSome
+      v4Ex.kind.get.value == "individual"
+      v4Ex.nickname.len == 2
+      v4Ex.nickname[0].value == @["Jack Jr."]
+      v4Ex.nickname[1].value == @["Doc A"]
+      v4Ex.fn.len == 1
+      v4Ex.fn[0].value == "Dr. Allen Foster"
+      v4Ex.email.len == 2
+      v4Ex.email[0].value == "jack.foster@company.test"
+      v4Ex.email[0].types == @["work"]
+
+  test "URI or Text properties are parsed correctly":
+    # Covers TEL, RELATED, UID, KEY
+    check:
+      v4Ex.tel.len == 3
+      v4ex.tel[0].types == @[$VC4_TelType.ttCell]
+      v4Ex.tel[0].value == "+1 555-123-4567"
+      v4Ex.tel[2].types == @[$VC4_TelType.ttWork,$VC4_TelType.ttVoice]
+      v4Ex.tel[2].valueType == some($vtUri)
+      v4Ex.tel[2].value == "tel:+1-555-874-1234"
+
+  test "N is parsed correctly":
+    check:
+      v4Ex.n.isSome
+      v4Ex.n.get.given == @["Jack"]
+      v4Ex.n.get.family == @["Foster"]
+      v4Ex.n.get.additional == @["John", "Allen"]
+      v4Ex.n.get.prefixes == @["Dr."]
+      v4Ex.n.get.suffixes == @["II"]
+
+  test "BDAY is parsed correctly":
+    check:
+      v4Ex.bday.isSome
+      v4Ex.bday.get.value == "--1224"
+      v4Ex.bday.get.year.isNone
+      v4Ex.bday.get.month == some(12)
+      v4Ex.bday.get.day == some(24)
+
+  test "ANNIVERSARY is parsed correctly":
+    check:
+      v4Ex.anniversary.isSome
+      v4Ex.anniversary.get.value == "20140612T163000-0500"
+      v4Ex.anniversary.get.year == some(2014)
+      v4Ex.anniversary.get.hour == some(16)
+      v4Ex.anniversary.get.minute == some(30)
+      v4Ex.anniversary.get.timezone == some("-0500")
+
+  test "GENDER is parsed correctly":
+    check:
+      v4Ex.gender.isSome
+      v4Ex.gender.get.sex == some(VC4_Sex.Male)
+      v4Ex.gender.get.genderIdentity == some("male")
+
+#[
+  test "CATEGORIES is parsed correctly":
+  test "REV is parsed correctly":
+  test "CLIENTPIDMAP is parsed correctly":
+]#
+
+  test "unknown properties are parsed correctly":
+
+    check v4Ex.customProp("MADE-UP-PROP").len == 1
+    let madeUpProp = v4Ex.customProp("MADE-UP-PROP")[0]
+    check:
+      madeUpProp.name == "MADE-UP-PROP"
+      madeUpProp.value == "Sample value for my made-up prop."
+
+  let cardWithAltBdayStr = testVCardTemplate % [(
+    "BDAY;VALUE=text;ALTID=1:20th century\r\n" &
+    "BDAY;VALUE=date-and-or-time;ALTID=1:19650321\r\n"
+  )]
+
+  test "single-cardinality properties allow multiples with ALTID":
+    check parseVCards(cardWithAltBdayStr).len == 1
+
+  let hasAltBdays = cast[VCard4](parseVCards(cardWithAltBdayStr)[0])
+
+  test "properties with cardinality 1 and altids return the first found by default":
+    check:
+      hasAltBdays.bday.isSome
+      hasAltBdays.bday.get.value == "20th century"
+      hasAltBdays.bday.get.year.isNone
+
+  test "allAlternatives":
+    check:
+      hasAltBdays.content.len == 3
+      hasAltBdays.bday.isSome
+
+    let allBdays = allAlternatives[VC4_Bday](hasAltBdays)
+    check:
+      allBdays.len == 1
+      allBdays.contains("1")
+      allBdays["1"].len == 2
+
+    let bday0 = allBdays["1"][0]
+    check:
+      bday0.value == "20th century"
+      bday0.year.isNone
+      bday0.month.isNone
+      bday0.day.isNone
+      bday0.hour.isNone
+      bday0.minute.isNone
+      bday0.second.isNone
+      bday0.timezone.isNone
+
+    let bday1 = allBDays["1"][1]
+    check:
+      bday1.value == "19650321"
+      bday1.year == some(1965)
+      bday1.month == some(3)
+      bday1.day == some(21)
+      bday1.hour.isNone
+      bday1.minute.isNone
+      bday1.second.isNone
+
+  test "PREF ordering":
+    check:
+      v4Ex.nickname --> map(it.value) == @[@["Jack Jr."], @["Doc A"]]
+      v4Ex.nickname.inPrefOrder --> map(it.value) == @[@["Doc A"], @["Jack Jr."]]
