@@ -1,9 +1,9 @@
-# VCard-specific Lexer
+# vCard-specific Lexer
 # © 2022-2023 Jonathan Bernard
 
-## This module defines a lexer with functionality useful for parsing VCard
+## This module defines a lexer with functionality useful for parsing vCard
 ## content. Specifically:
-## - it understands the VCard line-folding logic and transparently joins folded
+## - it understands the vCard line-folding logic and transparently joins folded
 ##   lines as it read input off its input stream.
 ## - it supports multiple nested bookmarks to make look-ahead decisions more
 ##   convenient

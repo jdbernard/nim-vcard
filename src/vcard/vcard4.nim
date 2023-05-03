@@ -4,7 +4,8 @@ import zero_functional
 
 #from std/sequtils import toSeq
 
-import ./private/[common, lexer]
+import ./common
+import ./private/[internals, lexer]
 
 type
   VC4_ValueType* = enum

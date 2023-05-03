@@ -2,26 +2,28 @@
 # © 2022 Jonathan Bernard
 
 ## The `vcard` module implements a high-performance vCard parser for both
-## versions 3.0 (defined by RFCs [2425][rfc2425] and  [2426][rfc2426]) and 4.0
-## (defined by RFC [6350][rfc6350])
+## versions 3.0 (defined by RFCs 2425_ and  2426_) and 4.0 (defined by RFC
+## 6350_)
 ##
-## [rfc2425]: https://tools.ietf.org/html/rfc2425
-## [rfc2426]: https://tools.ietf.org/html/rfc2426
-## [rfc6350]: https://tools.ietf.org/html/rfc6350
+## .. _2425: https://tools.ietf.org/html/rfc2425
+## .. _2426: https://tools.ietf.org/html/rfc2426
+## .. _6350: https://tools.ietf.org/html/rfc6350
 import std/[streams, unicode]
 
-import ./vcard/private/[common, lexer]
-import ./vcard/[vcard3, vcard4]
+import ./vcard/private/[internals, lexer]
+import ./vcard/[common, vcard3, vcard4]
 
 export vcard3, vcard4
-export common.VC_XParam,
+export common.VC_Param,
+       common.VC_XParam,
+       common.VCard,
        common.VCardParsingError,
        common.VCardVersion,
-       common.VCard,
-       common.getSingleValue,
-       common.getMultipleValues
+       common.allPropsOfType,
+       common.getMultipleValues,
+       common.getSingleValue
 
-proc add[T](vc: VCard, content: varargs[T]): void =
+proc add*[T](vc: VCard, content: varargs[T]): void =
   if vc.parsedVersion == VCardV3: add(cast[VCard3](vc), content)
   else: add(cast[VCard4](vc), content)
 
@@ -53,12 +55,18 @@ proc readVCard*(p: var VCardParser): VCard =
   if result.parsedVersion == VCardV3:
     while (p.skip(CRLF, true)): discard
 
-proc parseVCards*(input: Stream, filename = "input"): seq[VCard] =
-  var p: VCardParser
-  p.filename = filename
-  lexer.open(p, input)
+proc initVCardParser*(input: Stream, filename = "input"): VCardParser =
+  result.filename = filename
+  lexer.open(result, input)
 
-  # until EOF
+proc initVCardParser*(content: string, filename = "input"): VCardParser =
+  initVCardParser(newStringStream(content), filename)
+
+proc initVCardParserFromFile*(filepath: string): VCardParser =
+  initVCardParser(newFileStream(filepath, fmRead), filepath)
+
+proc parseVCards*(input: Stream, filename = "input"): seq[VCard] =
+  var p = initVCardParser(input, filename)
   while p.peek != '\0': result.add(p.readVCard)
 
 proc parseVCards*(content: string, filename = "input"): seq[VCard] =

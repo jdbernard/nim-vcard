@@ -1,21 +1,22 @@
-# vCard 3.0 and 4.0 Nim implementation
+# vCard 3.0 implementation
 # © 2022 Jonathan Bernard
 
-## The `vcard` module implements a high-performance vCard parser for both
-## versions 3.0 (defined by RFCs [2425][rfc2425] and  [2426][rfc2426]) and 4.0
-## (defined by RFC [6350][rfc6350])
+## This module implements a high-performance vCard parser for vCard version
+## 3.0 (defined in RFCs 2425_ and  2426_).
 ##
-## [rfc2425]: https://tools.ietf.org/html/rfc2425
-## [rfc2426]: https://tools.ietf.org/html/rfc2426
-## [rfc6350]: https://tools.ietf.org/html/rfc6350
+## .. _rfc2425: https://tools.ietf.org/html/rfc2425
+## .. _rfc2426: https://tools.ietf.org/html/rfc2426
 
 import std/[base64, genasts, macros, options, sequtils, streams, strutils,
             tables, times, unicode]
 
 import zero_functional
 
-import ./private/[common, lexer]
+import ./common
+import ./private/[internals, lexer]
 
+# Internal enumerations used to capture the value types and properties defined
+# by the spec and constants used.
 type
   VC3_ValueTypes = enum
     vtUri = "uri",
@@ -65,177 +66,6 @@ type
     pnClass = "CLASS"
     pnKey = "KEY"
 
-  VC3_Property* = ref object of RootObj
-    propertyId: int
-    group*: Option[string]
-    name*: string
-
-  VC3_SimpleTextProperty* = ref object of VC3_Property
-    value*: string
-    isPText*: bool # true if VALUE=ptext, false by default
-    language*: Option[string]
-    xParams: seq[VC_XParam]
-
-  VC3_BinaryProperty* = ref object of VC3_Property
-    valueType*: Option[string] # binary / uri. Stored separately from ENCODING
-                               # (captured in the isInline field) because the
-                               # VALUE parameter is not set by default, but is
-                               # allowed to be set.
-    value*: string  # either a URI or bit sequence, both stored as string
-    binaryType*: Option[string]# if using ENCODING=b, there may also be a TYPE
-                               # parameter specifying the MIME type of the
-                               # binary-encoded object, which is stored here.
-    isInline*: bool # true if ENCODING=b, false by default
-
-  VC3_Name* = ref object of VC3_Property
-    value*: string
-
-  VC3_Profile* = ref object of VC3_Property
-
-  VC3_Source* = ref object of VC3_Property
-    valueType*: Option[string]  # uri
-    value*: string # URI
-    context*: Option[string]
-    xParams*: seq[VC_XParam]
-
-  VC3_Fn* = ref object of VC3_SimpleTextProperty
-
-  VC3_N* = ref object of VC3_Property
-    family*: seq[string]
-    given*: seq[string]
-    additional*: seq[string]
-    prefixes*: seq[string]
-    suffixes*: seq[string]
-    language*: Option[string]
-    isPText*: bool # true if VALUE=ptext, false by default
-    xParams*: seq[VC_XParam]
-
-  VC3_Nickname* = ref object of VC3_SimpleTextProperty
-
-  VC3_Photo* = ref object of VC3_BinaryProperty
-
-  VC3_Bday* = ref object of VC3_Property
-    valueType*: Option[string] # date / date-time
-    value*: DateTime
-
-  VC3_AdrTypes* = enum
-    # Standard types defined in RFC2426
-    atDom = "DOM"
-    atIntl = "INTL"
-    atPostal = "POSTAL"
-    atParcel = "PARCEL"
-    atHome = "HOME"
-    atWork = "WORK"
-    atPref = "PREF"
-
-  VC3_Adr* = ref object of VC3_Property
-    adrType*: seq[string]
-    poBox*: string
-    extendedAdr*: string
-    streetAdr*: string
-    locality*: string
-    region*: string
-    postalCode*: string
-    country*: string
-    isPText*: bool # true if VALUE=ptext, false by default
-    language*: Option[string]
-    xParams*: seq[VC_XParam]
-
-  VC3_Label* = ref object of VC3_SimpleTextProperty
-    adrType*: seq[string]
-
-  VC3_TelTypes* = enum
-    ttHome = "HOME",
-    ttWork = "WORK",
-    ttPref = "PREF",
-    ttVoice = "VOICE",
-    ttFax = "FAX",
-    ttMsg = "MSG",
-    ttCell = "CELL",
-    ttPager = "PAGER",
-    ttBbs = "BBS",
-    ttModem = "MODEM",
-    ttCar = "CAR",
-    ttIsdn = "ISDN",
-    ttVideo = "VIDEO",
-    ttPcs = "PCS"
-
-  VC3_Tel* = ref object of VC3_Property
-    telType*: seq[string]
-    value*: string
-
-  VC3_EmailType* = enum
-    etInternet = "INTERNET",
-    etX400 = "X400"
-
-  VC3_Email* = ref object of VC3_Property
-    emailType*: seq[string]
-    value*: string
-
-  VC3_Mailer* = ref object of VC3_SimpleTextProperty
-
-  VC3_TZ* = ref object of VC3_Property
-    value*: string
-    isText*: bool # true if VALUE=text, false by default
-
-  VC3_Geo* = ref object of VC3_Property
-    lat*, long*: float
-
-  VC3_Title* = ref object of VC3_SimpleTextProperty
-
-  VC3_Role* = ref object of VC3_SimpleTextProperty
-
-  VC3_Logo* = ref object of VC3_BinaryProperty
-
-  VC3_Agent* = ref object of VC3_Property
-    value*: string  # either an escaped vCard object, or a URI
-    isInline*: bool # false if VALUE=uri, true by default
-
-  VC3_Org* = ref object of VC3_Property
-    value*: seq[string]
-    isPText*: bool # true if VALUE=ptext, false by default
-    language*: Option[string]
-    xParams*: seq[VC_XParam]
-
-  VC3_Categories* = ref object of VC3_Property
-    value*: seq[string]
-    isPText*: bool # true if VALUE=ptext, false by default
-    language*: Option[string]
-    xParams*: seq[VC_XParam]
-
-  VC3_Note* = ref object of VC3_SimpleTextProperty
-
-  VC3_Prodid* = ref object of VC3_SimpleTextProperty
-
-  VC3_Rev* = ref object of VC3_Property
-    valueType*: Option[string] # date / date-time
-    value*: DateTime
-
-  VC3_SortString* = ref object of VC3_SimpleTextProperty
-
-  VC3_Sound* = ref object of VC3_BinaryProperty
-
-  VC3_UID* = ref object of VC3_Property
-    value*: string
-
-  VC3_URL* = ref object of VC3_Property
-    value*: string
-
-  VC3_Version* = ref object of VC3_Property
-    value*: string # 3.0
-
-  VC3_Class* = ref object of VC3_Property
-    value*: string
-
-  VC3_Key* = ref object of VC3_BinaryProperty
-    keyType*: Option[string] # x509 / pgp
-
-  VC3_XType* = ref object of VC3_SimpleTextProperty
-
-  VCard3* = ref object of VCard
-    nextPropertyId: int
-    content*: seq[VC3_Property]
-
 const propertyCardMap: Table[VC3_PropertyName, VC_PropCardinality] = [
   (pnName, vpcAtMostOne),
   (pnProfile, vpcAtMostOne),
@@ -273,8 +103,227 @@ const propertyCardMap: Table[VC3_PropertyName, VC_PropCardinality] = [
 const DATE_FMT = "yyyy-MM-dd"
 const DATETIME_FMT = "yyyy-MM-dd'T'HH:mm:sszz"
 
+
+## Externally Exposed Types
+## ========================
+##
+## The following are the object types for the vCard 3.0 implementation
+## interface.
+type
+  VC3_Property* = ref object of RootObj
+    ## Abstract base class for all vCard 3.0 property objects.
+    propertyId: int
+    group*: Option[string]
+    name*: string
+
+  VC3_SimpleTextProperty* = ref object of VC3_Property
+    ## Abstract base class for all vCard 3.0 properties that only support the
+    ## text value type (`VALUE=text` or `VALUE=ptext`).
+    value*: string
+    isPText*: bool ## true if VALUE=ptext, false by default
+    language*: Option[string]
+    xParams*: seq[VC_XParam]
+
+  VC3_BinaryProperty* = ref object of VC3_Property
+    ## Abstract base class for all vCard 3.0 properties that support the binary
+    ## or uri value types (`ENCODING=b` or `VALUE=uri`).
+    valueType*: Option[string] ## \
+      ## binary / uri. Stored separately from ENCODING (captured in the
+      ## isInline field) because the VALUE parameter is not set by default, but
+      ## is allowed to be set.
+    value*: string  ## \
+      ## either a URI or bit sequence, both stored as string
+    binaryType*: Option[string] ## \
+      ## if using ENCODING=b, there may also be a TYPE parameter specifying the
+      ## MIME type of the binary-encoded object, which is stored here.
+    isInline*: bool ## \
+      ## true if ENCODING=b, false by default
+
+  VC3_Name* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 NAME properties.
+    value*: string
+
+  VC3_Profile* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 PROFILE properties.
+
+  VC3_Source* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 SOURCE properties.
+    valueType*: Option[string]  ## If set, this must be set to "uri"
+    value*: string              ## The URI value.
+    context*: Option[string]
+    xParams*: seq[VC_XParam]
+
+  VC3_Fn* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 FN properties.
+
+  VC3_N* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 N properties.
+    family*: seq[string]      ## Surname / family name
+    given*: seq[string]       ## First name / given name
+    additional*: seq[string]  ## Additional / middle names
+    prefixes*: seq[string]    ## e.g. Mr., Dr., etc.
+    suffixes*: seq[string]    ## e.g. Esq., II, etc.
+    language*: Option[string]
+    isPText*: bool            ## true if VALUE=ptext, false by default
+    xParams*: seq[VC_XParam]
+
+  VC3_Nickname* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 NICKNAME properties.
+
+  VC3_Photo* = ref object of VC3_BinaryProperty
+    ## Concrete class representing vCard 3.0 PHOTO properties.
+
+  VC3_Bday* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 BDAY properties.
+    valueType*: Option[string] # date / date-time
+    value*: DateTime
+
+  VC3_AdrTypes* = enum
+    ## Standard types for ADR values defined in RFC2426
+    atDom = "DOM"
+    atIntl = "INTL"
+    atPostal = "POSTAL"
+    atParcel = "PARCEL"
+    atHome = "HOME"
+    atWork = "WORK"
+    atPref = "PREF"
+
+  VC3_Adr* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 ADR properties.
+    adrType*: seq[string]
+    poBox*: string
+    extendedAdr*: string
+    streetAdr*: string
+    locality*: string
+    region*: string
+    postalCode*: string
+    country*: string
+    isPText*: bool             ## `true` if `VALUE=ptext`, `false` by default
+    language*: Option[string]
+    xParams*: seq[VC_XParam]
+
+  VC3_Label* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 LABEL properties.
+    adrType*: seq[string]
+
+  VC3_TelTypes* = enum
+    ## Standard types for TEL values defined in RFC2426
+    ttHome = "HOME",
+    ttWork = "WORK",
+    ttPref = "PREF",
+    ttVoice = "VOICE",
+    ttFax = "FAX",
+    ttMsg = "MSG",
+    ttCell = "CELL",
+    ttPager = "PAGER",
+    ttBbs = "BBS",
+    ttModem = "MODEM",
+    ttCar = "CAR",
+    ttIsdn = "ISDN",
+    ttVideo = "VIDEO",
+    ttPcs = "PCS"
+
+  VC3_Tel* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 TEL properties.
+    telType*: seq[string]
+    value*: string
+
+  VC3_EmailType* = enum
+    ## Standard types for EMAIL values defined in RFC2426
+    etInternet = "INTERNET",
+    etX400 = "X400"
+
+  VC3_Email* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 EMAIL properties.
+    emailType*: seq[string]
+    value*: string
+
+  VC3_Mailer* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 MAILER properties.
+
+  VC3_TZ* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 TZ properties.
+    value*: string
+    isText*: bool ## `true` if `VALUE=text`, `false` by default
+
+  VC3_Geo* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 GEO properties.
+    lat*, long*: float
+
+  VC3_Title* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 TITLE properties.
+
+  VC3_Role* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 ROLE properties.
+
+  VC3_Logo* = ref object of VC3_BinaryProperty
+    ## Concrete class representing vCard 3.0 LOGO properties.
+
+  VC3_Agent* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 AGENT properties.
+    value*: string  ## either an escaped vCard object, or a URI
+    isInline*: bool ## `false` if `VALUE=uri`, `true` by default
+
+  VC3_Org* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 ORG properties.
+    value*: seq[string]
+    isPText*: bool ## `true` if `VALUE=ptext`, `false` by default
+    language*: Option[string]
+    xParams*: seq[VC_XParam]
+
+  VC3_Categories* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 CATEGORIES properties.
+    value*: seq[string]
+    isPText*: bool ## `true` if `VALUE=ptext`, `false` by default
+    language*: Option[string]
+    xParams*: seq[VC_XParam]
+
+  VC3_Note* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 NOTE properties.
+
+  VC3_Prodid* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 PRODID properties.
+
+  VC3_Rev* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 REV properties.
+    valueType*: Option[string] # date / date-time
+    value*: DateTime
+
+  VC3_SortString* = ref object of VC3_SimpleTextProperty
+    ## Concrete class representing vCard 3.0 SORT-STRING properties.
+
+  VC3_Sound* = ref object of VC3_BinaryProperty
+    ## Concrete class representing vCard 3.0 SOUND properties.
+
+  VC3_UID* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 UID properties.
+    value*: string
+
+  VC3_URL* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 URL properties.
+    value*: string
+
+  VC3_Version* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 VERSION properties.
+    value*: string # 3.0
+
+  VC3_Class* = ref object of VC3_Property
+    ## Concrete class representing vCard 3.0 CLASS properties.
+    value*: string
+
+  VC3_Key* = ref object of VC3_BinaryProperty
+    ## Concrete class representing vCard 3.0 KEY properties.
+    keyType*: Option[string] # x509 / pgp
+
+  VC3_XType* = ref object of VC3_SimpleTextProperty
+
+  VCard3* = ref object of VCard
+    ## Concrete class implementing the vCard 3.0 type.
+    nextPropertyId: int
+    content*: seq[VC3_Property]
+
 # Internal Utility/Implementation
-# =============================================================================
+# ===============================
 
 template takePropertyId(vc3: VCard3): int =
   vc3.nextPropertyId += 1
@@ -291,8 +340,8 @@ func namesForProp(prop: VC3_PropertyName):
     ident("newVC3_" & name),
     ident(name.toLower))
 
-# Initializers
-# =============================================================================
+## Initializers
+## ============
 
 func newVC3_Name*(value: string, group = none[string]()): VC3_Name =
   return VC3_Name(name: "NAME", value: value, group: group)
@@ -585,14 +634,17 @@ func newVC3_XType*(
     value, language, isPText, xParams, group)
 
 # Accessors
-# =============================================================================
+# =========
 
-func forGroup*(vc: openarray[VC3_Property], group: string): seq[VC3_Property] =
-  return vc.filterIt(it.group.isSome and it.group.get == group)
+func forGroup*(vc3: VCard3, group: string): seq[VC3_Property] =
+  ## Return all properties defined on the vCard associated with the given
+  ## group.
+  return vc3.content.filterIt(it.group.isSome and it.group.get == group)
 
-func groups*(vc: openarray[VC3_Property]): seq[string] =
+func groups*(vc3: VCard3): seq[string] =
+  ## Return a list of all groups present on the vCard
   result = @[]
-  for c in vc:
+  for c in vc3.content:
     if c.group.isSome:
       let grp = c.group.get
       if not result.contains(grp): result.add(grp)
@@ -610,7 +662,10 @@ macro genPropertyAccessors(
       let funcDef = genAstOpt({kDirtyTemplate}, funcName, typeName):
         func funcName*(vc3: VCard3): Option[typeName] =
           result = findFirst[typeName](vc3.content)
+      funcDef[6].insert(0, newCommentStmtNode(
+        "Return the single " & $pn & " property (if present)."))
       result.add(funcDef)
+
 
     of vpcExactlyOne:
       let funcDef = genAstOpt({kDirtyTemplate}, funcName, pn, typeName):
@@ -621,18 +676,23 @@ macro genPropertyAccessors(
               "VCard should have exactly one $# property, but $# were found" %
                 [$pn, $props.len])
           result = props[0]
+      funcDef[6].insert(0, newCommentStmtNode(
+        "Return the " & $pn & " property."))
       result.add(funcDef)
 
     of vpcAtLeastOne, vpcAny:
       let funcDef = genAstOpt({kDirtyTemplate}, funcName, typeName):
         func funcName*(vc3: VCard3): seq[typeName] =
           result = findAll[typeName](vc3.content)
+      funcDef[6].insert(0, newCommentStmtNode(
+        "Return all instances of the " & $pn & " property."))
       result.add(funcDef)
 
 genPropertyAccessors(propertyCardMap.pairs.toSeq -->
   filter(not [pnVersion].contains(it[0])))
 
 func version*(vc3: VCard3): VC3_Version =
+  ## Return the VERSION property.
   let found = findFirst[VC3_Version](vc3.content)
   if found.isSome: return found.get
   else: return VC3_Version(
@@ -641,13 +701,17 @@ func version*(vc3: VCard3): VC3_Version =
     name: "VERSION",
     value: "3.0")
 
-func xTypes*(c: openarray[VC3_Property]): seq[VC3_XType] = findAll[VC3_XType](c)
-func xTypes*(vc3: VCard3): seq[VC3_XType] = vc3.content.xTypes
+func xTypes*(vc3: VCard3): seq[VC3_XType] = findAll[VC3_XType](vc3.content)
+  ## Return all extended properties (starting with `x-`).
 
 # Setters
 # =============================================================================
 
 func set*[T: VC3_Property](vc3: VCard3, content: varargs[T]): void =
+  ## Set the given property on the vCard. This will replace the first existing
+  ## instance of this property or append this as a new property if there is no
+  ## existing instance of this property. This is useful for properties which
+  ## should only appear once within the vCard.
   for c in content:
     var nc = c
     let existingIdx = vc3.content.indexOfIt(it of T)
@@ -659,6 +723,7 @@ func set*[T: VC3_Property](vc3: VCard3, content: varargs[T]): void =
       vc3.content[existingIdx] = nc
 
 func add*[T: VC3_Property](vc3: VCard3, content: varargs[T]): void =
+  ## Add a new property to the end of the vCard.
   for c in content:
     var nc = c
     nc.propertyId = vc3.takePropertyId
@@ -811,6 +876,7 @@ proc serialize(c: VC3_Property): string =
     return serialize(cast[VC3_BinaryProperty](c))
 
 proc `$`*(vc3: VCard3): string =
+  ## Serialize a vCard into its textual representation.
   result = "BEGIN:VCARD" & CRLF
   result &= "VERSION:3.0" & CRLF
   for c in vc3.content.filterIt(not (it of VC3_Version)):

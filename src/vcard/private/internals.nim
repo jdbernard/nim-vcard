@@ -6,56 +6,27 @@
 ## implementations.
 ##
 ## This module is not intended to be exposed to library consumers. It is
-## intended to be imported by the vcard3 and vcard4 implementations. There are
-## a handful of functions (under the **Public Definitions** section) that will
-## be re-exported by the root `vcard` module and available on that namespace to
-## users of the library.
+## intended to be imported by the vcard3 and vcard4 implementations.
 
 import std/[macros, options, strutils, times, unicode]
 import zero_functional
 from std/sequtils import toSeq
-import ./lexer
 
-## Internal Types (used by `vcard{3,4}`)
-## =====================================
+import ./lexer
+import ../common
+
+# Internal Types (used by `vcard{3,4}`)
+# =====================================
 type
   VC_PropCardinality* = enum
-    ## enum used to define the possible cardinalities of VCard properties.
+    ## enum used to define the possible cardinalities of vCard properties.
     vpcAtMostOne,
     vpcExactlyOne,
     vpcAtLeastOne
     vpcAny
 
-## External Types (exported on `vcard`)
-## ====================================
-type
-  VC_Param* = tuple[name: string, values: seq[string]]
-    ## Representation of VCard parameter and its values.
-
-  VCardVersion* = enum VCardV3 = "3.0", VCardV4 = "4.0" ## \
-    ## enum used to differentiate VCard3 and VCard4 versions.
-
-  VCardParser* = object of VCardLexer
-    ## Common VCard parser object
-    filename*: string
-
-  VCardParsingError* = object of ValueError
-    ## Error raised when invalid input is detected while parsing a VCard
-
-  VC_XParam* = tuple[name, value: string]
-    ## Representation of VCard extended parameters (starting with "X-").
-    ## Because the meaning of these parameters is implementation-specific, no
-    ## parsing of the parameter value is performed, it is returned verbatim.
-
-  VCard* = ref object of RootObj
-    ## Abstract base class for all VCards. `parsedVersion` can be used to
-    ## interrogate any concrete instance of this class. `asVCard3` and
-    ## `asVCard4` exist as convenience functions to cast an instance to one of
-    ## the subclasses depending on the value of `parsedVersion`.
-    parsedVersion*: VCardVersion
-
-## Internal constants (used by `vcard{3,4}`)
-## =========================================
+# Internal constants (used by `vcard{3,4}`)
+# =========================================
 const CRLF* = "\r\n"
 const WSP* = {' ', '\t'}
 const DIGIT* = { '0'..'9' }
@@ -79,8 +50,8 @@ const DATE_TIME_FMTS = [
 
 const ALL_DATE_AND_OR_TIME_FMTS = DATE_TIME_FMTS.toSeq & DATE_FMTS.toSeq
 
-## Internal Utility/Implementation Functions
-## =========================================
+# Internal Utility/Implementation Functions
+# =========================================
 
 proc parseDateTimeStr(
     dateStr: string,
@@ -127,10 +98,8 @@ macro assignFields*(assign: untyped, fields: varargs[untyped]): untyped =
     exp.add(f, f)
     result.add(exp)
 
-## Internal Parsing Functionality
-## ==============================
-
-proc getSingleValue*(params: openarray[VC_Param], name: string): Option[string];
+# Internal Parsing Functionality
+# ==============================
 
 proc error*(p: VCardParser, msg: string) =
   raise newException(VCardParsingError, "$1($2, $3) Error: $4" %
@@ -187,7 +156,7 @@ proc isNext*(p: var VCardParser, expected: string, caseSensitive = false): bool 
   p.returnToBookmark
 
 proc readGroup*(p: var VCardParser): Option[string] =
-  ## All VCARD content items can be optionally prefixed with a group name. This
+  ## All vCard content items can be optionally prefixed with a group name. This
   ## scans the input to see if there is a group defined at the current read
   ## location. If there is a valid group, the group name is returned and the
   ## read position is advanced past the '.' to the start of the content type
@@ -302,8 +271,8 @@ proc validateRequiredParameters*(
     if pv.isSome and pv.get != v:
       p.error("parameter '$1' must have the value '$2'" % [n, v])
 
-## Internal Serialization Utilities
-## ================================
+# Internal Serialization Utilities
+# ================================
 
 func foldContentLine*(s: string): string =
   result = ""
@@ -312,61 +281,3 @@ func foldContentLine*(s: string): string =
     result &= rem[0..<75] & "\r\n "
     rem = rem[75..^1]
   result &= rem
-
-
-## Publicly Exported Procedure and Functions
-## =========================================
-
-proc getMultipleValues*(
-    params: openarray[VC_Param],
-    name: string
-  ): seq[string] =
-
-  ## Get all of the values for a given parameter in a single list. There are
-  ## two patterns for multi-valued parameters defined in the VCard3 RFCs:
-  ##
-  ##   - TYPE=work,cell,voice
-  ##   - TYPE=work;TYPE=cell;TYPE=voice
-  ##
-  ## Parameter values can be specific using both patterns. This method joins
-  ## all defined values regardless of the pattern used to define them.
-
-  let ps = params.toSeq
-  ps -->
-    filter(it.name == name).
-    map(it.values).
-    flatten()
-
-proc getSingleValue*(
-    params: openarray[VC_Param],
-    name: string
-  ): Option[string] =
-  ## Get the first single value defined for a parameter.
-  ##
-  ## Many parameters only support a single value, depending on the content type.
-  ## In order to support multi-valued parameters our implementation stores all
-  ## parameters as seq[string]. This function is a convenience around that.
-
-  let ps = params.toSeq
-  let foundParam = ps --> find(it.name == name)
-
-  if foundParam.isSome and foundParam.get.values.len > 0:
-    return some(foundParam.get.values[0])
-  else:
-    return none[string]()
-
-func allPropsOfType*[T, VC: VCard](vc: VC): seq[T] = findAll[T](vc)
-  ## Get all instances of the requested property type present on the given
-  ## VCard.
-  ##
-  ## This can be useful when there is some logic that hides multiple instances
-  ## of a property, or returns a limited subset. For example, on 3.0 versions
-  ## of VCards, this library assumes that there will only be one instance of
-  ## the NAME property. The 3.0 spec implies that the NAME property should only
-  ## be present at most once, but does not explicitly state this. It is
-  ## possible for a 3.0 VCard to contain multiple NAME properties. using
-  ## `vc3.name` will only return the first. This function allows a caller to
-  ## retrieve all instances for any given property type. For example:
-  ##
-  ##     let vc3 = parseVCards(...)
-  ##     let allNames = allPropsOfType[VC3_Name](vc3)
