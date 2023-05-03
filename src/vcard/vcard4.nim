@@ -228,7 +228,7 @@ type
   VC4_Property* = ref object of RootObj
     propertyId: int
     group*: Option[string]
-    params*: seq[VCParam]
+    params*: seq[VC_Param]
 
   VC4_DateTimeOrTextProperty* = ref object of VC4_Property
     valueType: VC4_ValueType # should only be vtDateAndOrTime or vtText
@@ -360,9 +360,9 @@ template takePropertyId(vc4: VCard4): int =
   vc4.nextPropertyId - 1
 
 func flattenParameters(
-    params: seq[VCParam],
-    addtlParams: varargs[VCParam] = @[]
-  ): seq[VCParam] =
+    params: seq[VC_Param],
+    addtlParams: varargs[VC_Param] = @[]
+  ): seq[VC_Param] =
 
   let paramTable = newTable[string, seq[string]]()
   let allParams = params & toSeq(addtlParams)
@@ -451,7 +451,7 @@ proc parseTimestamp(value: string): DateTime =
     except: discard
   raise newException(VCardParsingError, "unable to parse timestamp value: " & value)
 
-func parsePidValues(param: VCParam): seq[PidValue]
+func parsePidValues(param: VC_Param): seq[PidValue]
   {.raises:[VCardParsingError].} =
 
   result = @[]
@@ -466,7 +466,7 @@ func parsePidValues(param: VCParam): seq[PidValue]
       raise newException(VCardParsingError, "PID value expected to be two " &
         "integers separated by '.' (2.1 for example)")
 
-template validateType(p: VCardParser, params: seq[VCParam], t: VC4_ValueType) =
+template validateType(p: VCardParser, params: seq[VC_Param], t: VC4_ValueType) =
   p.validateRequiredParameters(params, [("VALUE", $t)])
 
 func cmp[T: VC4_Property](x, y: T): int =
@@ -576,7 +576,7 @@ macro genDateTimeOrTextPropInitializers(
           value: DateTime,
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
-          params: seq[VCParam] = @[]): typeName =
+          params: seq[VC_Param] = @[]): typeName =
         return typeName(
           params: flattenParameters(params,
             ("ALTID", if altId.isSome: @[altId.get] else: @[])),
@@ -597,7 +597,7 @@ macro genDateTimeOrTextPropInitializers(
           valueType: Option[string] = some($vtDateAndOrTime),
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
-          params: seq[VCParam] = @[]): typeName =
+          params: seq[VC_Param] = @[]): typeName =
         result = typeName(
           params: flattenParameters(params,
             ("ALTID", if altId.isSome: @[altId.get] else: @[])),
@@ -625,7 +625,7 @@ macro genTextPropInitializers(
           value: string,
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
-          params: seq[VCParam] = @[]): typeName =
+          params: seq[VC_Param] = @[]): typeName =
         return typeName(
           params: flattenParameters(params,
             ("ALTID", if altId.isSome: @[altId.get] else: @[])),
@@ -648,7 +648,7 @@ macro genTextListPropInitializers(
           value: seq[string],
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
-          params: seq[VCParam] = @[]): typeName =
+          params: seq[VC_Param] = @[]): typeName =
         return typeName(
           params: flattenParameters(params,
             ("ALTID", if altId.isSome: @[altId.get] else: @[])),
@@ -671,7 +671,7 @@ macro genTextOrUriPropInitializers(
           isUrl = false,
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
-          params: seq[VCParam] = @[]): typeName =
+          params: seq[VC_Param] = @[]): typeName =
         return typeName(
           params: flattenParameters(params,
             ("ALTID", if altId.isSome: @[altId.get] else: @[])),
@@ -694,7 +694,7 @@ macro genUriPropInitializers(
           altId: Option[string] = none[string](),
           mediaType: Option[string] = none[string](),
           group: Option[string] = none[string](),
-          params: seq[VCParam] = @[]): typeName =
+          params: seq[VC_Param] = @[]): typeName =
         return typeName(
           params: flattenParameters(params,
             ("ALTID", if altId.isSome: @[altId.get] else: @[])),
@@ -728,7 +728,7 @@ func newVC4_N*(
     suffixes: seq[string] = @[],
     altId: Option[string] = none[string](),
     group: Option[string] = none[string](),
-    params: seq[VCParam] = @[]): VC4_N =
+    params: seq[VC_Param] = @[]): VC4_N =
 
   return assignFields(
     VC4_N(params: flattenParameters(params,
@@ -740,7 +740,7 @@ func newVC4_Gender*(
     genderIdentity: Option[string] = none[string](),
     altId: Option[string] = none[string](),
     group: Option[string] = none[string](),
-    params: seq[VCParam] = @[]): VC4_Gender =
+    params: seq[VC_Param] = @[]): VC4_Gender =
 
   return assignFields(
     VC4_Gender(params: flattenParameters(params,
@@ -760,7 +760,7 @@ func newVC4_Adr*(
     group: Option[string] = none[string](),
     label: Option[string] = none[string](),
     language: Option[string] = none[string](),
-    params: seq[VCParam] = @[],
+    params: seq[VC_Param] = @[],
     pids: seq[PidValue] = @[],
     pref: Option[int] = none[int](),
     types: seq[string] = @[],
@@ -785,7 +785,7 @@ func newVC4_ClientPidMap*(
     id: int,
     uri: string,
     group: Option[string] = none[string](),
-    params: seq[VCParam] = @[]): VC4_ClientPidMap =
+    params: seq[VC_Param] = @[]): VC4_ClientPidMap =
 
   result = assignFields(
     VC4_ClientPidMap(params: flattenParameters(params)),
@@ -794,7 +794,7 @@ func newVC4_ClientPidMap*(
 func newVC4_Rev*(
     value: DateTime,
     group: Option[string] = none[string](),
-    params: seq[VCParam]= @[]): VC4_Rev =
+    params: seq[VC_Param]= @[]): VC4_Rev =
 
   return assignFields(
     VC4_Rev(params: flattenParameters(params)),
@@ -1057,7 +1057,7 @@ func serializeParamValue(value: string): string =
       result = "\"" & result & "\""
       break
 
-func serialize(params: seq[VCParam]): string =
+func serialize(params: seq[VC_Param]): string =
   result = ""
   for pLent in params:
     let p = pLent
@@ -1145,11 +1145,11 @@ proc readParamValue(p: var VCardParser): string =
     p.error("quoted parameter value expected to end with a " &
       "double quote (\")")
 
-proc readParams(p: var VCardParser): seq[VCParam] =
+proc readParams(p: var VCardParser): seq[VC_Param] =
   result = @[]
   while p.peek == ';':
     discard p.read
-    var param: VCParam = (p.readName, @[])
+    var param: VC_Param = (p.readName, @[])
     p.expect("=", true)
     param.values.add(p.readParamValue)
     while p.peek == ',':
@@ -1244,7 +1244,7 @@ macro genPropParsers(
     genProps: static[openarray[(VC4_PropertyName, VC4_ValueType)]],
     group: Option[string],
     name: string,
-    params: seq[VCParam],
+    params: seq[VC_Param],
     contents: var seq[VC4_Property],
     p: var VCardParser
   ): untyped =
