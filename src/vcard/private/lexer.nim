@@ -11,6 +11,7 @@ type VCardLexer* = object of RootObj
   bookmarkVal*: seq[string] # value read since the bookmark was set
   lineNumber*: int          # how many newlines have we seen so far
   lineStart: int            # buffer index buffer for the start of the current line
+  lineVal*: string          # value read since the start of the current line
 
 proc skipUtf8Bom(vcl: var VCardLexer) =
   if (vcl.buffer[0] == '\xEF') and (vcl.buffer[1] == '\xBB') and (vcl.buffer[2] == '\xBF'):
@@ -137,16 +138,18 @@ proc read*(vcl: var VCardLexer, peek = false): char =
     vcl.pos += 3
     vcl.lineNumber += 1
     vcl.lineStart = vcl.pos
+    vcl.lineVal = newStringOfCap(84)
     if vcl.atEnd: vcl.fillBuffer()
 
   elif vcl.buffer[vcl.pos] == '\n':
     vcl.lineNumber += 1
     vcl.lineStart = wrappedIdx(vcl.pos + 1)
+    vcl.lineVal = newStringOfCap(84)
 
   result = vcl.buffer[vcl.pos]
   if not peek:
-    for idx in 0..<vcl.bookmarkVal.len:
-      vcl.bookmarkVal[idx].add(result)
+    for idx in 0..<vcl.bookmarkVal.len: vcl.bookmarkVal[idx].add(result)
+    vcl.lineVal.add(result)
     vcl.pos = wrappedIdx(vcl.pos + 1)
 
 proc readLen*(vcl: var VCardLexer, bytesToRead: int, peek = false): string =
@@ -160,14 +163,19 @@ proc readRune*(vcl: var VCardLexer, peek = false): Rune =
     vcl.pos += 3
     vcl.lineNumber += 1
     vcl.lineStart = vcl.pos
+    vcl.lineVal = newStringOfCap(84)
     if vcl.atEnd: vcl.fillBuffer()
 
   elif vcl.buffer[vcl.pos] == '\n':
     vcl.lineNumber += 1
     vcl.lineStart = wrappedIdx(vcl.pos + 1)
+    vcl.lineVal = newStringOfCap(84)
 
   result = vcl.buffer.runeAt(vcl.pos)
-  if not peek: vcl.pos += vcl.buffer.runeLenAt(vcl.pos)
+  if not peek:
+    for idx in 0..<vcl.bookmarkVal.len: vcl.bookmarkVal[idx].add(result)
+    vcl.lineVal.add(result)
+    vcl.pos += vcl.buffer.runeLenAt(vcl.pos)
 
 proc readRunesLen*(vcl: var VCardLexer, runesToRead: int, peek = false): string =
   result = newStringOfCap(runesToRead * 4)

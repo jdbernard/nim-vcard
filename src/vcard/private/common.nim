@@ -57,7 +57,7 @@ func serialize*(s: seq[VC_XParam]): string =
 # =============================================================================
 
 proc error*(p: VCardParser, msg: string) =
-  raise newException(VCardParsingError, "$1($2, $3) Error: $4] " %
+  raise newException(VCardParsingError, "$1($2, $3) Error: $4" %
     [ p.filename, $p.lineNumber, $p.getColNumber(p.pos), msg ])
 
 proc isNext*[T](p: var T, expected: string, caseSensitive = false): bool =
@@ -79,21 +79,23 @@ proc isNext*[T](p: var T, expected: string, caseSensitive = false): bool =
   p.returnToBookmark
 
 proc expect*[T](p: var T, expected: string, caseSensitive = false) =
-  p.setBookmark
+  try:
+    p.setBookmark
 
-  if caseSensitive:
-    for ch in expected:
-      if p.read != ch:
-        p.error("expected '$1' but found '$2'" %
-          [expected, p.readSinceBookmark])
+    if caseSensitive:
+      for ch in expected:
+        if p.read != ch: raise newException(ValueError, "")
+    else:
+      for rune in expected.runes:
+        if p.readRune.toLower != rune.toLower:
+          raise newException(ValueError, "")
 
-  else:
-    for rune in expected.runes:
-      if p.readRune.toLower != rune.toLower:
-        p.error("expected '$1' but found '$2'" %
-          [ expected, p.readSinceBookmark ])
+  except ValueError:
+    p.error("expected '$1' but found '$2':\n\t$3\n\t$4" %
+      [expected, p.readSinceBookmark, p.lineVal,
+       " ".repeat(p.getColNumber(p.pos) - 1) & "^\n"])
 
-  p.unsetBookmark
+  finally: p.unsetBookmark
 
 proc readGroup*[T](p: var T): Option[string] =
   ## All VCARD content items can be optionally prefixed with a group name. This
