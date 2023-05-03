@@ -17,7 +17,9 @@ export vcard3, vcard4
 export common.VC_XParam,
        common.VCardParsingError,
        common.VCardVersion,
-       common.VCard
+       common.VCard,
+       common.getSingleValue,
+       common.getMultipleValues
 
 proc add[T](vc: VCard, content: varargs[T]): void =
   if vc.parsedVersion == VCardV3: add(cast[VCard3](vc), content)

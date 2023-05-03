@@ -9,11 +9,17 @@ type
   VCardParser* = object of VCardLexer
     filename*: string
 
-  VCParam* = tuple[name: string, values: seq[string]]
+  VC_Param* = tuple[name: string, values: seq[string]]
 
   VCardParsingError* = object of ValueError
 
   VC_XParam* = tuple[name, value: string]
+
+  VC_PropCardinality* = enum
+    vpcAtMostOne,
+    vpcExactlyOne,
+    vpcAtLeastOne
+    vpcAny
 
   VCard* = ref object of RootObj
     parsedVersion*: VCardVersion
@@ -38,6 +44,8 @@ template findFirst*[T, VCT](c: openarray[VCT]): Option[T] =
   if found.len > 0: some(found[0])
   else: none[T]()
 
+func allPropsOfType*[T, VC: VCard](vc: VC): seq[T] = findAll[T](vc)
+
 macro assignFields*(assign: untyped, fields: varargs[untyped]): untyped =
   result = assign
 
@@ -48,10 +56,6 @@ macro assignFields*(assign: untyped, fields: varargs[untyped]): untyped =
 
 # Output
 # =============================================================================
-
-func serialize*(s: seq[VC_XParam]): string =
-  result = ""
-  for x in s: result &= ";" & x.name & "=" & x.value
 
 # Parsing
 # =============================================================================
@@ -155,7 +159,7 @@ proc skip*(p: var VCardParser, expected: string, caseSensitive = false): bool =
   return true
 
 proc existsWithValue*(
-    params: openarray[VCParam],
+    params: openarray[VC_Param],
     name, value: string,
     caseSensitive = false
   ): bool =
@@ -178,7 +182,7 @@ proc existsWithValue*(
       it.values[0].toLower == value.toLower)
 
 proc getMultipleValues*(
-    params: openarray[VCParam],
+    params: openarray[VC_Param],
     name: string
   ): seq[string] =
 
@@ -198,7 +202,7 @@ proc getMultipleValues*(
     flatten()
 
 proc getSingleValue*(
-    params: openarray[VCParam],
+    params: openarray[VC_Param],
     name: string
   ): Option[string] =
   ## Get the first single value defined for a parameter.
@@ -217,7 +221,7 @@ proc getSingleValue*(
 
 proc validateNoParameters*(
     p: VCardParser,
-    params: openarray[VCParam],
+    params: openarray[VC_Param],
     name: string
   ) =
 
@@ -227,7 +231,7 @@ proc validateNoParameters*(
 
 proc validateRequiredParameters*(
     p: VCardParser,
-    params: openarray[VCParam],
+    params: openarray[VC_Param],
     expectations: openarray[tuple[name: string, value: string]]
   ) =
 

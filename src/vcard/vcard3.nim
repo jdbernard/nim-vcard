@@ -9,8 +9,8 @@
 ## [rfc2426]: https://tools.ietf.org/html/rfc2426
 ## [rfc6350]: https://tools.ietf.org/html/rfc6350
 
-import std/[base64, macros, options, sequtils, streams, strutils, times,
-            unicode]
+import std/[base64, genasts, macros, options, sequtils, streams, strutils,
+            tables, times, unicode]
 
 import zero_functional
 
@@ -32,38 +32,38 @@ type
     vtPhoneNumber = "phone-number"
     vtUtcOffset = "utc-offset"
 
-  VC3_PropertyNames = enum
-    cnName = "NAME"
-    cnProfile = "PROFILE"
-    cnSource = "SOURCE"
-    cnFn = "FN"
-    cnN = "N"
-    cnNickname = "NICKNAME"
-    cnPhoto = "PHOTO"
-    cnBday = "BDAY"
-    cnAdr = "ADR"
-    cnLabel = "LABEL"
-    cnTel = "TEL"
-    cnEmail = "EMAIL"
-    cnMailer = "MAILER"
-    cnTz = "TZ"
-    cnGeo = "GEO"
-    cnTitle = "TITLE"
-    cnRole = "ROLE"
-    cnLogo = "LOGO"
-    cnAgent = "AGENT"
-    cnOrg = "ORG"
-    cnCategories = "CATEGORIES"
-    cnNote = "NOTE"
-    cnProdid = "PRODID"
-    cnRev = "REV"
-    cnSortString = "SORT-STRING"
-    cnSound = "SOUND"
-    cnUid = "UID"
-    cnUrl = "URL"
-    cnVersion = "VERSION"
-    cnClass = "CLASS"
-    cnKey = "KEY"
+  VC3_PropertyName = enum
+    pnName = "NAME"
+    pnProfile = "PROFILE"
+    pnSource = "SOURCE"
+    pnFn = "FN"
+    pnN = "N"
+    pnNickname = "NICKNAME"
+    pnPhoto = "PHOTO"
+    pnBday = "BDAY"
+    pnAdr = "ADR"
+    pnLabel = "LABEL"
+    pnTel = "TEL"
+    pnEmail = "EMAIL"
+    pnMailer = "MAILER"
+    pnTz = "TZ"
+    pnGeo = "GEO"
+    pnTitle = "TITLE"
+    pnRole = "ROLE"
+    pnLogo = "LOGO"
+    pnAgent = "AGENT"
+    pnOrg = "ORG"
+    pnCategories = "CATEGORIES"
+    pnNote = "NOTE"
+    pnProdid = "PRODID"
+    pnRev = "REV"
+    pnSortString = "SORT-STRING"
+    pnSound = "SOUND"
+    pnUid = "UID"
+    pnUrl = "URL"
+    pnVersion = "VERSION"
+    pnClass = "CLASS"
+    pnKey = "KEY"
 
   VC3_Property* = ref object of RootObj
     propertyId: int
@@ -232,10 +232,43 @@ type
 
   VC3_XType* = ref object of VC3_SimpleTextProperty
 
-  # TODO: implications of this being a ref now instead of a concrete object
   VCard3* = ref object of VCard
     nextPropertyId: int
     content*: seq[VC3_Property]
+
+const propertyCardMap: Table[VC3_PropertyName, VC_PropCardinality] = [
+  (pnName, vpcAtMostOne),
+  (pnProfile, vpcAtMostOne),
+  (pnSource, vpcAtMostOne),
+  (pnFn, vpcExactlyOne),
+  (pnN, vpcExactlyOne),
+  (pnNickname, vpcAtMostOne),
+  (pnPhoto, vpcAny),
+  (pnBday, vpcAtMostOne),
+  (pnAdr, vpcAny),
+  (pnLabel, vpcAny),
+  (pnTel, vpcAny),
+  (pnEmail, vpcAny),
+  (pnMailer, vpcAny),
+  (pnTz, vpcAny),
+  (pnGeo, vpcAny),
+  (pnTitle, vpcAny),
+  (pnRole, vpcAny),
+  (pnLogo, vpcAny),
+  (pnAgent, vpcAny),
+  (pnOrg, vpcAny),
+  (pnCategories, vpcAtMostOne),
+  (pnNote, vpcAny),
+  (pnProdid, vpcAtMostOne),
+  (pnRev, vpcAtMostOne),
+  (pnSortString, vpcAtMostOne),
+  (pnSound, vpcAny),
+  (pnUid, vpcAtMostOne),
+  (pnUrl, vpcAny),
+  (pnVersion, vpcExactlyOne),
+  (pnClass, vpcAny),
+  (pnKey, vpcAny)
+].toTable
 
 const DATE_FMT = "yyyy-MM-dd"
 const DATETIME_FMT = "yyyy-MM-dd'T'HH:mm:sszz"
@@ -247,12 +280,25 @@ template takePropertyId(vc3: VCard3): int =
   vc3.nextPropertyId += 1
   vc3.nextPropertyId - 1
 
+func namesForProp(prop: VC3_PropertyName):
+    tuple[enumName, typeName, initFuncName, accessorFuncName: NimNode] =
+
+  var name: string = ($prop).replace("-", "")
+  if name.len > 1: name = name[0] & name[1..^1].toLower
+  return (
+    ident("pn" & name),
+    ident("VC3_" & name),
+    ident("newVC3_" & name),
+    ident(name.toLower))
 
 # Initializers
 # =============================================================================
 
 func newVC3_Name*(value: string, group = none[string]()): VC3_Name =
   return VC3_Name(name: "NAME", value: value, group: group)
+
+func newVC3_Profile*(group = none[string]()): VC3_Profile =
+  return VC3_Profile(name: "PROFILE", group: group)
 
 func newVC3_Source*(
   value: string,
@@ -263,7 +309,7 @@ func newVC3_Source*(
 
   return assignFields(
     VC3_Source(
-      name: $cnSource,
+      name: $pnSource,
       valueType: if inclValue: some("uri")
                  else: none[string](),
       context: if inclContext: some("word")
@@ -278,7 +324,7 @@ func newVC3_Fn*(
   group = none[string]()): VC3_Fn =
 
   return assignFields(
-    VC3_Fn(name: $cnFn),
+    VC3_Fn(name: $pnFn),
     value, language, isPText, group, xParams)
 
 func newVC3_N*(
@@ -293,7 +339,7 @@ func newVC3_N*(
   group = none[string]()): VC3_N =
 
   return assignFields(
-    VC3_N(name: $cnN),
+    VC3_N(name: $pnN),
     family, given, additional, prefixes, suffixes, language, xParams)
 
 func newVC3_Nickname*(
@@ -304,7 +350,7 @@ func newVC3_Nickname*(
   group = none[string]()): VC3_Nickname =
 
   return assignFields(
-    VC3_Nickname(name: $cnNickname),
+    VC3_Nickname(name: $pnNickname),
     value, language, isPText, group, xParams)
 
 func newVC3_Photo*(
@@ -315,7 +361,7 @@ func newVC3_Photo*(
   group = none[string]()): VC3_Photo =
 
   return assignFields(
-    VC3_Photo(name: $cnPhoto),
+    VC3_Photo(name: $pnPhoto),
     value, valueType, binaryType, isInline, group)
 
 func newVC3_Bday*(
@@ -323,7 +369,7 @@ func newVC3_Bday*(
   valueType = none[string](),
   group = none[string]()): VC3_Bday =
 
-    return assignFields(VC3_Bday(name: $cnBday), value, valueType, group)
+    return assignFields(VC3_Bday(name: $pnBday), value, valueType, group)
 
 func newVC3_Adr*(
   adrType = @[$atIntl,$atPostal,$atParcel,$atWork],
@@ -340,7 +386,7 @@ func newVC3_Adr*(
   xParams: seq[VC_XParam] = @[]): VC3_Adr =
 
   return assignFields(
-    VC3_Adr(name: $cnAdr),
+    VC3_Adr(name: $pnAdr),
     adrType, poBox, extendedAdr, streetAdr, locality, region, postalCode,
     country, isPText, language, group, xParams)
 
@@ -353,7 +399,7 @@ func newVC3_Label*(
   group = none[string]()): VC3_Label =
 
   return assignFields(
-    VC3_Label(name: $cnLabel),
+    VC3_Label(name: $pnLabel),
     value, adrType, language, isPText, group, xParams)
 
 func newVC3_Tel*(
@@ -361,14 +407,14 @@ func newVC3_Tel*(
   telType = @[$ttVoice],
   group = none[string]()): VC3_Tel =
 
-  return assignFields(VC3_Tel(name: $cnTel), value, telType, group)
+  return assignFields(VC3_Tel(name: $pnTel), value, telType, group)
 
 func newVC3_Email*(
   value: string,
   emailType = @[$etInternet],
   group = none[string]()): VC3_Email =
 
-  return assignFields(VC3_Email(name: $cnEmail), value, emailType, group)
+  return assignFields(VC3_Email(name: $pnEmail), value, emailType, group)
 
 func newVC3_Mailer*(
   value: string,
@@ -378,14 +424,14 @@ func newVC3_Mailer*(
   group = none[string]()): VC3_Mailer =
 
   return assignFields(
-    VC3_Mailer(name: $cnMailer),
+    VC3_Mailer(name: $pnMailer),
     value, language, isPText, xParams, group)
 
 func newVC3_TZ*(value: string, isText = false, group = none[string]()): VC3_TZ =
-  return assignFields(VC3_TZ(name: $cnTz), value, isText, group)
+  return assignFields(VC3_TZ(name: $pnTz), value, isText, group)
 
 func newVC3_Geo*(lat, long: float, group = none[string]()): VC3_Geo =
-  return assignFields(VC3_Geo(name: $cnGeo), lat, long, group)
+  return assignFields(VC3_Geo(name: $pnGeo), lat, long, group)
 
 func newVC3_Title*(
   value: string,
@@ -395,7 +441,7 @@ func newVC3_Title*(
   group = none[string]()): VC3_Title =
 
   return assignFields(
-    VC3_Title(name: $cnTitle),
+    VC3_Title(name: $pnTitle),
     value, language, isPText, xParams, group)
 
 func newVC3_Role*(
@@ -406,7 +452,7 @@ func newVC3_Role*(
   group = none[string]()): VC3_Role =
 
   return assignFields(
-    VC3_Role(name: $cnRole),
+    VC3_Role(name: $pnRole),
     value, language, isPText, xParams, group)
 
 func newVC3_Logo*(
@@ -417,7 +463,7 @@ func newVC3_Logo*(
   group = none[string]()): VC3_Logo =
 
   return assignFields(
-    VC3_Logo(name: $cnLogo),
+    VC3_Logo(name: $pnLogo),
     value, valueType, binaryType, isInline, group)
 
 func newVC3_Agent*(
@@ -425,7 +471,7 @@ func newVC3_Agent*(
   isInline = true,
   group = none[string]()): VC3_Agent =
 
-  return VC3_Agent(name: $cnAgent, isInline: isInline, group: group)
+  return VC3_Agent(name: $pnAgent, isInline: isInline, group: group)
 
 func newVC3_Org*(
   value: seq[string],
@@ -435,7 +481,7 @@ func newVC3_Org*(
   group = none[string]()): VC3_Org =
 
   return assignFields(
-    VC3_Org(name: $cnOrg),
+    VC3_Org(name: $pnOrg),
     value, isPText, language, xParams, group)
 
 func newVC3_Categories*(
@@ -446,7 +492,7 @@ func newVC3_Categories*(
   group = none[string]()): VC3_Categories =
 
   return assignFields(
-    VC3_Categories(name: $cnCategories),
+    VC3_Categories(name: $pnCategories),
     value, isPText, language, xParams, group)
 
 func newVC3_Note*(
@@ -457,7 +503,7 @@ func newVC3_Note*(
   group = none[string]()): VC3_Note =
 
   return assignFields(
-    VC3_Note(name: $cnNote),
+    VC3_Note(name: $pnNote),
     value, language, isPText, xParams, group)
 
 func newVC3_Prodid*(
@@ -468,7 +514,7 @@ func newVC3_Prodid*(
   group = none[string]()): VC3_Prodid =
 
   return assignFields(
-    VC3_Prodid(name: $cnProdid),
+    VC3_Prodid(name: $pnProdid),
     value, language, isPText, xParams, group)
 
 func newVC3_Rev*(
@@ -476,7 +522,7 @@ func newVC3_Rev*(
   valueType = none[string](),
   group = none[string]()): VC3_Rev =
 
-  return assignFields(VC3_Rev(name: $cnRev), value, valueType, group)
+  return assignFields(VC3_Rev(name: $pnRev), value, valueType, group)
 
 func newVC3_SortString*(
   value: string,
@@ -486,7 +532,7 @@ func newVC3_SortString*(
   group = none[string]()): VC3_SortString =
 
   return assignFields(
-    VC3_SortString(name: $cnSortstring),
+    VC3_SortString(name: $pnSortstring),
     value, language, isPText, xParams, group)
 
 func newVC3_Sound*(
@@ -497,20 +543,20 @@ func newVC3_Sound*(
   group = none[string]()): VC3_Sound =
 
   return assignFields(
-    VC3_Sound(name: $cnSound),
+    VC3_Sound(name: $pnSound),
     value, valueType, binaryType, isInline, group)
 
 func newVC3_UID*(value: string, group = none[string]()): VC3_UID =
-  return VC3_UID(name: $cnUid, value: value, group: group)
+  return VC3_UID(name: $pnUid, value: value, group: group)
 
 func newVC3_URL*(value: string, group = none[string]()): VC3_URL =
-  return VC3_URL(name: $cnUrl, value: value, group: group)
+  return VC3_URL(name: $pnUrl, value: value, group: group)
 
 func newVC3_Version*(group = none[string]()): VC3_Version =
-  return VC3_Version(name: $cnVersion, value: "3.0", group: group)
+  return VC3_Version(name: $pnVersion, value: "3.0", group: group)
 
 func newVC3_Class*(value: string, group = none[string]()): VC3_Class =
-  return VC3_Class(name: $cnClass, value: value, group: group)
+  return VC3_Class(name: $pnClass, value: value, group: group)
 
 func newVC3_Key*(
   value: string,
@@ -520,7 +566,7 @@ func newVC3_Key*(
   group = none[string]()): VC3_Key =
 
   return assignFields(
-    VC3_Key(name: $cnKey, binaryType: keyType),
+    VC3_Key(name: $pnKey, binaryType: keyType),
     value, valueType, keyType, isInline, group)
 
 func newVC3_XType*(
@@ -551,108 +597,49 @@ func groups*(vc: openarray[VC3_Property]): seq[string] =
       let grp = c.group.get
       if not result.contains(grp): result.add(grp)
 
-func name*(c: openarray[VC3_Property]): Option[VC3_Name] = findFirst[VC3_Name](c)
-func name*(vc3: VCard3): Option[VC3_Name] = vc3.content.name
+macro genPropertyAccessors(
+    properties: static[openarray[(VC3_PropertyName, VC_PropCardinality)]]
+  ): untyped =
 
-func profile*(c: openarray[VC3_Property]): Option[VC3_Profile] =
-  findFirst[VC3_Profile](c)
-func profile*(vc3: VCard3): Option[VC3_Profile] = vc3.content.profile
+  result = newStmtList()
+  for (pn, pCard) in properties:
+    let (_, typeName, _, funcName) = namesForProp(pn)
 
-func source*(c: openarray[VC3_Property]): seq[VC3_Source] = findAll[VC3_Source](c)
-func source*(vc3: VCard3): seq[VC3_Source] = vc3.content.source
+    case pCard:
+    of vpcAtMostOne:
+      let funcDef = genAstOpt({kDirtyTemplate}, funcName, typeName):
+        func funcName*(vc3: VCard3): Option[typeName] =
+          result = findFirst[typeName](vc3.content)
+      result.add(funcDef)
 
-func fn*(c: openarray[VC3_Property]): VC3_Fn = findFirst[VC3_Fn](c).get
-func fn*(vc3: VCard3): VC3_Fn = vc3.content.fn
+    of vpcExactlyOne:
+      let funcDef = genAstOpt({kDirtyTemplate}, funcName, pn, typeName):
+        func funcName*(vc3: VCard3): typeName =
+          let props = findAll[typeName](vc3.content)
+          if props.len != 1:
+            raise newException(ValueError,
+              "VCard should have exactly one $# property, but $# were found" %
+                [$pn, $props.len])
+          result = props[0]
+      result.add(funcDef)
 
-func n*(c: openarray[VC3_Property]): VC3_N = findFirst[VC3_N](c).get
-func n*(vc3: VCard3): VC3_N = vc3.content.n
+    of vpcAtLeastOne, vpcAny:
+      let funcDef = genAstOpt({kDirtyTemplate}, funcName, typeName):
+        func funcName*(vc3: VCard3): seq[typeName] =
+          result = findAll[typeName](vc3.content)
+      result.add(funcDef)
 
-func nickname*(c: openarray[VC3_Property]): Option[VC3_Nickname] = findFirst[VC3_Nickname](c)
-func nickname*(vc3: VCard3): Option[VC3_Nickname] = vc3.content.nickname
+genPropertyAccessors(propertyCardMap.pairs.toSeq -->
+  filter(not [pnVersion].contains(it[0])))
 
-func photo*(c: openarray[VC3_Property]): seq[VC3_Photo] = findAll[VC3_Photo](c)
-func photo*(vc3: VCard3): seq[VC3_Photo] = vc3.content.photo
-
-func bday*(c: openarray[VC3_Property]): Option[VC3_Bday] = findFirst[VC3_Bday](c)
-func bday*(vc3: VCard3): Option[VC3_Bday] = vc3.content.bday
-
-func adr*(c: openarray[VC3_Property]): seq[VC3_Adr] = findAll[VC3_Adr](c)
-func adr*(vc3: VCard3): seq[VC3_Adr] = vc3.content.adr
-
-func label*(c: openarray[VC3_Property]): seq[VC3_Label] = findAll[VC3_Label](c)
-func label*(vc3: VCard3): seq[VC3_Label] = vc3.content.label
-
-func tel*(c: openarray[VC3_Property]): seq[VC3_Tel] = findAll[VC3_Tel](c)
-func tel*(vc3: VCard3): seq[VC3_Tel] = vc3.content.tel
-
-func email*(c: openarray[VC3_Property]): seq[VC3_Email] = findAll[VC3_Email](c)
-func email*(vc3: VCard3): seq[VC3_Email] = vc3.content.email
-
-func mailer*(c: openarray[VC3_Property]): Option[VC3_Mailer] = findFirst[VC3_Mailer](c)
-func mailer*(vc3: VCard3): Option[VC3_Mailer] = vc3.content.mailer
-
-func tz*(c: openarray[VC3_Property]): Option[VC3_Tz] = findFirst[VC3_Tz](c)
-func tz*(vc3: VCard3): Option[VC3_Tz] = vc3.content.tz
-
-func geo*(c: openarray[VC3_Property]): Option[VC3_Geo] = findFirst[VC3_Geo](c)
-func geo*(vc3: VCard3): Option[VC3_Geo] = vc3.content.geo
-
-func title*(c: openarray[VC3_Property]): seq[VC3_Title] = findAll[VC3_Title](c)
-func title*(vc3: VCard3): seq[VC3_Title] = vc3.content.title
-
-func role*(c: openarray[VC3_Property]): seq[VC3_Role] = findAll[VC3_Role](c)
-func role*(vc3: VCard3): seq[VC3_Role] = vc3.content.role
-
-func logo*(c: openarray[VC3_Property]): seq[VC3_Logo] = findAll[VC3_Logo](c)
-func logo*(vc3: VCard3): seq[VC3_Logo] = vc3.content.logo
-
-func agent*(c: openarray[VC3_Property]): Option[VC3_Agent] = findFirst[VC3_Agent](c)
-func agent*(vc3: VCard3): Option[VC3_Agent] = vc3.content.agent
-
-func org*(c: openarray[VC3_Property]): seq[VC3_Org] = findAll[VC3_Org](c)
-func org*(vc3: VCard3): seq[VC3_Org] = vc3.content.org
-
-func categories*(c: openarray[VC3_Property]): Option[VC3_Categories] =
-  findFirst[VC3_Categories](c)
-func categories*(vc3: VCard3): Option[VC3_Categories] = vc3.content.categories
-
-func note*(c: openarray[VC3_Property]): Option[VC3_Note] = findFirst[VC3_Note](c)
-func note*(vc3: VCard3): Option[VC3_Note] = vc3.content.note
-
-func prodid*(c: openarray[VC3_Property]): Option[VC3_Prodid] = findFirst[VC3_Prodid](c)
-func prodid*(vc3: VCard3): Option[VC3_Prodid] = vc3.content.prodid
-
-func rev*(c: openarray[VC3_Property]): Option[VC3_Rev] = findFirst[VC3_Rev](c)
-func rev*(vc3: VCard3): Option[VC3_Rev] = vc3.content.rev
-
-func sortstring*(c: openarray[VC3_Property]): Option[VC3_SortString] =
-  findFirst[VC3_SortString](c)
-func sortstring*(vc3: VCard3): Option[VC3_SortString] = vc3.content.sortstring
-
-func sound*(c: openarray[VC3_Property]): seq[VC3_Sound] = findAll[VC3_Sound](c)
-func sound*(vc3: VCard3): seq[VC3_Sound] = vc3.content.sound
-
-func uid*(c: openarray[VC3_Property]): Option[VC3_UID] = findFirst[VC3_UID](c)
-func uid*(vc3: VCard3): Option[VC3_UID] = vc3.content.uid
-
-func url*(c: openarray[VC3_Property]): Option[VC3_URL] = findFirst[VC3_URL](c)
-func url*(vc3: VCard3): Option[VC3_URL] = vc3.content.url
-
-func version*(c: openarray[VC3_Property]): VC3_Version =
-  let found = findFirst[VC3_Version](c)
+func version*(vc3: VCard3): VC3_Version =
+  let found = findFirst[VC3_Version](vc3.content)
   if found.isSome: return found.get
   else: return VC3_Version(
-    propertyId: c.len + 1,
+    propertyId: vc3.content.len + 1,
     group: none[string](),
     name: "VERSION",
     value: "3.0")
-func version*(vc3: VCard3): VC3_Version = vc3.content.version
-
-func class*(c: openarray[VC3_Property]): Option[VC3_Class] = findFirst[VC3_Class](c)
-func class*(vc3: VCard3): Option[VC3_Class] = vc3.content.class
-
-func key*(c: openarray[VC3_Property]): seq[VC3_Key] = findAll[VC3_Key](c)
-func key*(vc3: VCard3): seq[VC3_Key] = vc3.content.key
 
 func xTypes*(c: openarray[VC3_Property]): seq[VC3_XType] = findAll[VC3_XType](c)
 func xTypes*(vc3: VCard3): seq[VC3_XType] = vc3.content.xTypes
@@ -689,6 +676,9 @@ func updateOrAdd*[T: VC3_Property](vc3: VCard3, content: seq[T]): VCard3 =
 func nameWithGroup(s: VC3_Property): string =
   if s.group.isSome: s.group.get & "." & s.name
   else: s.name
+
+func serialize(xp: seq[VC_XParam]): string =
+  return (xp --> map(";" & it.name & "=" & it.value)).join("")
 
 func serialize(s: VC3_Source): string =
   result = s.nameWithGroup
@@ -942,18 +932,18 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
 
     case name
 
-    of $cnName:
+    of $pnName:
       p.validateNoParameters(params, "NAME")
       result.add(newVC3_Name(p.readValue, group))
 
-    of $cnProfile:
+    of $pnProfile:
       if p.readValue.toUpper != "VCARD":
         p.error("the value of the PROFILE content type must be \"$1\"" %
           ["vcard"])
       p.validateNoParameters(params, "NAME")
       result.add(VC3_Property(group: group, name: name))
 
-    of $cnSource:
+    of $pnSource:
       p.validateRequiredParameters(params,
         [("CONTEXT", "word"), ("VALUE", "uri")])
 
@@ -964,10 +954,10 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         inclValue = params.existsWithValue("VALUE", $vtUri),
         xParams = params.getXParams))
 
-    of $cnFn:
+    of $pnFn:
       result.add(assignCommon(newVC3_Fn(value = p.readValue)))
 
-    of $cnN:
+    of $pnN:
       result.add(assignCommon(newVC3_N(
         family = p.readTextValueList,
         given = p.readTextValueList(ifPrefix = some(';')),
@@ -975,10 +965,10 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         prefixes = p.readTextValueList(ifPrefix = some(';')),
         suffixes = p.readTextValueList(ifPrefix = some(';')))))
 
-    of $cnNickname:
+    of $pnNickname:
       result.add(assignCommon(newVC3_Nickname(value = p.readValue)))
 
-    of $cnPhoto:
+    of $pnPhoto:
       result.add(newVC3_Photo(
         group = group,
         value = p.readValue,
@@ -986,7 +976,7 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         binaryType = params.getSingleValue("TYPE"),
         isInline = params.existsWithValue("ENCODING", "B")))
 
-    of $cnBday:
+    of $pnBday:
       let valueType = params.getSingleValue("VALUE")
       let valueStr = p.readValue
       var value: DateTime
@@ -1009,7 +999,7 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         valueType = valueType,
         value = value))
 
-    of $cnAdr:
+    of $pnAdr:
       result.add(assignCommon(newVC3_Adr(
         adrType = params.getMultipleValues("TYPE"),
         poBox = p.readTextValue,
@@ -1020,32 +1010,32 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         postalCode = p.readTextValue(ignorePrefix = {';'}),
         country = p.readTextValue(ignorePrefix = {';'}))))
 
-    of $cnLabel:
+    of $pnLabel:
       result.add(assignCommon(newVC3_Label(
         value = p.readValue,
         adrType = params.getMultipleValues("TYPE"))))
 
-    of $cnTel:
+    of $pnTel:
       result.add(newVC3_Tel(
         group = group,
         value = p.readValue,
         telType = params.getMultipleValues("TYPE")))
 
-    of $cnEmail:
+    of $pnEmail:
       result.add(newVC3_Email(
         group = group,
         value = p.readValue,
         emailType = params.getMultipleValues("TYPE")))
 
-    of $cnMailer:
+    of $pnMailer:
       result.add(assignCommon(newVC3_Mailer(value = p.readValue)))
 
-    of $cnTz:
+    of $pnTz:
       result.add(newVC3_Tz(
         value = p.readValue,
         isText = params.existsWithValue("VALUE", "TEXT")))
 
-    of $cnGeo:
+    of $pnGeo:
       let rawValue = p.readValue
       try:
         let partsStr = rawValue.split(';')
@@ -1058,13 +1048,13 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         p.error("expected two float values separated by ';' for the GEO " &
           "content type but received '" & rawValue & "'")
 
-    of $cnTitle:
+    of $pnTitle:
       result.add(assignCommon(newVC3_Title(value = p.readValue)))
 
-    of $cnRole:
+    of $pnRole:
       result.add(assignCommon(newVC3_Role(value = p.readValue)))
 
-    of $cnLogo:
+    of $pnLogo:
       result.add(newVC3_Logo(
         group = group,
         value = p.readValue,
@@ -1072,7 +1062,7 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         binaryType = params.getSingleValue("TYPE"),
         isInline = params.existsWithValue("ENCODING", "B")))
 
-    of $cnAgent:
+    of $pnAgent:
       let valueParam = params.getSingleValue("VALUE")
       if valueParam.isSome and valueParam.get != $vtUri:
         p.error("the VALUE parameter must be set to '" & $vtUri &
@@ -1084,21 +1074,21 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         value = p.readValue,
         isInline = valueParam.isNone))
 
-    of $cnOrg:
+    of $pnOrg:
       result.add(assignCommon(newVC3_Org(
         value = p.readTextValueList(seps = {';'}))))
 
-    of $cnCategories:
+    of $pnCategories:
       result.add(assignCommon(newVC3_Categories(
         value = p.readTextValueList())))
 
-    of $cnNote:
+    of $pnNote:
       result.add(assignCommon(newVC3_Note(value = p.readTextValue)))
 
-    of $cnProdid:
+    of $pnProdid:
       result.add(assignCommon(newVC3_Prodid(value = p.readValue)))
 
-    of $cnRev:
+    of $pnRev:
       let valueType = params.getSingleValue("VALUE")
       let valueStr = p.readValue
       var value: DateTime
@@ -1122,10 +1112,10 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         valueType = valueType
       ))
 
-    of $cnSortString:
+    of $pnSortString:
       result.add(assignCommon(newVC3_SortString(value = p.readValue)))
 
-    of $cnSound:
+    of $pnSound:
       result.add(newVC3_Sound(
         group = group,
         value = p.readValue,
@@ -1133,21 +1123,21 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         binaryType = params.getSingleValue("TYPE"),
         isInline = params.existsWithValue("ENCODING", "B")))
 
-    of $cnUid:
+    of $pnUid:
       result.add(newVC3_UID(group = group, value = p.readValue))
 
-    of $cnUrl:
+    of $pnUrl:
       result.add(newVC3_URL(group = group, value = p.readValue))
 
-    of $cnVersion:
+    of $pnVersion:
       p.expect("3.0")
       p.validateNoParameters(params, "VERSION")
       result.add(newVC3_Version(group = group))
 
-    of $cnClass:
+    of $pnClass:
       result.add(newVC3_Class(group = group, value = p.readValue))
 
-    of $cnKey:
+    of $pnKey:
       result.add(newVC3_Key(
         group = group,
         value = p.readValue,

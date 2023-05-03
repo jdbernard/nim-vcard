@@ -9,22 +9,15 @@ suite "vcard/vcard3":
     runVcard3PrivateTests()
 
   let jdbVCard = readFile("tests/jdb.vcf")
-  # TODO: remove cast after finishing VCard4 implementation
-  let jdb = cast[VCard3](parseVCards(jdbVCard)[0])
 
   test "parseVCard3":
-    check:
-      jdb.n.family == @["Bernard"]
-      jdb.n.given == @["Jonathan"]
-      jdb.fn.value == "Jonathan Bernard"
+    check parseVCards(jdbVCard).len == 1
 
   test "parseVCard3File":
-    let jdb = cast[VCard3](parseVCardsFromFile("tests/jdb.vcf")[0])
-    check:
-      jdb.email.len == 7
-      jdb.email[0].value == "jonathan@jdbernard.com"
-      jdb.email[0].emailType.contains("pref")
-      jdb.fn.value == "Jonathan Bernard"
+    check parseVCardsFromFile("tests/jdb.vcf").len == 1
+
+  # TODO: remove cast after finishing VCard4 implementation
+  let jdb = cast[VCard3](parseVCards(jdbVCard)[0])
 
   test "email is parsed correctly":
     check:
