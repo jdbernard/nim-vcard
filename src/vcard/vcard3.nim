@@ -520,7 +520,11 @@ func newVC3_Agent*(
   isInline = true,
   group = none[string]()): VC3_Agent =
 
-  return VC3_Agent(name: $pnAgent, isInline: isInline, group: group)
+  return VC3_Agent(
+    name: $pnAgent,
+    value: value,
+    isInline: isInline,
+    group: group)
 
 func newVC3_Org*(
   value: seq[string],
@@ -1067,8 +1071,8 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       if p.readValue.toUpper != "VCARD":
         p.error("the value of the PROFILE content type must be \"$1\"" %
           ["vcard"])
-      p.validateNoParameters(params, "NAME")
-      result.add(VC3_Property(group: group, name: name))
+      p.validateNoParameters(params, "PROFILE")
+      result.add(newVC3_Profile(group))
 
     of $pnSource:
       p.validateRequiredParameters(params,

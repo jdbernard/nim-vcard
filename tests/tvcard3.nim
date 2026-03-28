@@ -240,7 +240,9 @@ suite "vcard/vcard3":
       "FN:John Smith",
       "N:Smith;John;;;"))
 
-    check parsed.profile.isSome
+    check:
+      parsed.profile.isSome
+      ($parsed).contains("PROFILE:VCARD")
 
   test "spec: AGENT uri values survive parse and serialize":
     let serialized = $parseSingleVCard3(vcard3Doc(
@@ -250,6 +252,12 @@ suite "vcard/vcard3":
       "AGENT;VALUE=uri:mailto:assistant@example.com"))
 
     check serialized.contains("AGENT;VALUE=uri:mailto:assistant@example.com")
+
+  test "spec: constructed AGENT values serialize with their content":
+    let vc = newMinimalVCard3()
+    vc.add(newVC3_Agent("mailto:assistant@example.com", isInline = false))
+
+    check ($vc).contains("AGENT;VALUE=uri:mailto:assistant@example.com")
 
   test "spec: folded lines may continue with horizontal tab":
     let parsed = parseSingleVCard3(
