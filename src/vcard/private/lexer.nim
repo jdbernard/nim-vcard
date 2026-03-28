@@ -202,7 +202,7 @@ proc isLineWrap(vcl: var VCardLexer, allowRefill = true): bool =
   # at least three characters in the buffer
   else:
     return vcl.buffer[wrappedIdx(vcl.pos + 1)] == '\n' and
-           vcl.buffer[wrappedIdx(vcl.pos + 2)] == ' '
+           vcl.buffer[wrappedIdx(vcl.pos + 2)] in {' ', '\t'}
 
 proc read*(vcl: var VCardLexer, peek = false): char =
   ## Read one byte off of the input stream. By default this will advance the
@@ -391,6 +391,13 @@ proc runVcardLexerPrivateTests*() =
     l.open(newStringStream("line\r\n  wrap\r\nline 2"), 3)
 
     assert l.readExpected("line wrap\r\nline 2")
+
+  # "handles wrapped lines with tabs":
+  block:
+    var l: VCardLexer
+    l.open(newStringStream("line\r\n\twrap\r\nline 2"), 3)
+
+    assert l.readExpected("linewrap\r\nline 2")
 
   # "fillBuffer correctness":
   block:

@@ -1272,6 +1272,13 @@ proc runVCard3PrivateTests*() =
     assert g.isSome
     assert g.get == "mygroup"
 
+  # "readGroup with hyphen":
+  block:
+    var p = initParser("item-1.BEGIN:VCARD")
+    let g = p.readGroup
+    assert g.isSome
+    assert g.get == "item-1"
+
   # "readGroup without group":
   block:
     var p = initParser("BEGIN:VCARD")

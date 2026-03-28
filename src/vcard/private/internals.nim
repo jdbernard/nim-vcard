@@ -163,8 +163,9 @@ proc readGroup*(p: var VCardParser): Option[string] =
   ## name. If there is not a valid group the read position is left unchanged.
 
   p.setBookmark
+  let validChars = ALPHA_NUM + {'-'}
   var ch = p.read
-  while ALPHA_NUM.contains(ch): ch = p.read
+  while validChars.contains(ch): ch = p.read
 
   if (ch == '.'):
     result = some(readSinceBookmark(p)[0..^2])
