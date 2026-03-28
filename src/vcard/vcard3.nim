@@ -902,11 +902,12 @@ proc readParamValue(p: var VCardParser): string =
   ## Read a single parameter value at the current read position or error.
   p.setBookmark
   if p.peek == '"':
+    discard p.read
     while QSAFE_CHARS.contains(p.peek): discard p.read
     if p.read != '"':
       p.error("quoted parameter value expected to end with a " &
         "double quote (\")")
-    result = p.readSinceBookmark[0 ..< ^1]
+    result = p.readSinceBookmark[1 ..< ^1]
   else:
     while SAFE_CHARS.contains(p.peek): discard p.read
     result = p.readSinceBookmark
@@ -1393,6 +1394,24 @@ proc runVCard3PrivateTests*() =
     assert p.read == '='
     assert p.readParamValue == "Fun&Games%"
 
+  # "readParamValue quoted":
+  block:
+    var p = initParser("FN;LANGUAGE=\"en\":John Smith")
+    assert p.readName == "FN"
+    assert p.read == ';'
+    assert p.readName == "LANGUAGE"
+    assert p.read == '='
+    assert p.readParamValue == "en"
+
+  # "readParamValue quoted with comma":
+  block:
+    var p = initParser("LABEL;TYPE=\"HOME,POSTAL\":123 Main St.")
+    assert p.readName == "LABEL"
+    assert p.read == ';'
+    assert p.readName == "TYPE"
+    assert p.read == '='
+    assert p.readParamValue == "HOME,POSTAL"
+
   # "readParams":
   block:
     var p = initParser("TEL;TYPE=WORK;TYPE=Fun&Games%,Extra:+15551234567")
@@ -1406,6 +1425,15 @@ proc runVCard3PrivateTests*() =
     assert params[1].values.len == 2
     assert params[1].values[0] == "Fun&Games%"
     assert params[1].values[1] == "Extra"
+
+  # "readParams quoted":
+  block:
+    var p = initParser("FN;LANGUAGE=\"en\":John Smith")
+    assert p.readName == "FN"
+    let params = p.readParams
+    assert params.len == 1
+    assert params[0].name == "LANGUAGE"
+    assert params[0].values == @["en"]
 
   # "readValue":
   block:

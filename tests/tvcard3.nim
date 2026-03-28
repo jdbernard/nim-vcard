@@ -202,9 +202,13 @@ suite "vcard/vcard3":
     let parsed = parseSingleVCard3(vcard3Doc(
       "VERSION:3.0",
       "FN;LANGUAGE=\"en\":John Smith",
+      "LABEL;TYPE=\"HOME,POSTAL\":123 Main St.",
       "N:Smith;John;;;"))
 
-    check parsed.fn.language == some("en")
+    check:
+      parsed.fn.language == some("en")
+      parsed.label.len == 1
+      parsed.label[0].adrType == @["HOME,POSTAL"]
 
   test "spec: PROFILE is exposed as the standard property type":
     let parsed = parseSingleVCard3(vcard3Doc(
