@@ -16,8 +16,8 @@ docs: doc/vcard/vcard.html
 
 .PHONY: test
 test:
-	#@for t in $(TESTS); do $$t; done
-	nimble --warning:BareExcept:off test
+	nimble c tests/runner.nim
+	./tests/runner
 
 .PHONY: install
 install: test
