@@ -182,21 +182,44 @@ suite "vcard/vcard3":
       serialized.contains("SOUND;ENCODING=b;TYPE=WAVE:" & payload)
       serialized.contains("KEY;ENCODING=b;TYPE=PGP:" & payload)
 
-  test "spec: uri-backed binary properties round-trip as uris":
+  test "spec: PHOTO, LOGO, and SOUND may round-trip as uris":
     let serialized = $parseSingleVCard3(vcard3Doc(
       "VERSION:3.0",
       "FN:John Smith",
       "N:Smith;John;;;",
       "PHOTO;VALUE=uri:http://example.test/photo.jpg",
       "LOGO;VALUE=uri:http://example.test/logo.gif",
-      "SOUND;VALUE=uri:http://example.test/sound.wav",
-      "KEY;VALUE=uri:http://example.test/key.asc"))
+      "SOUND;VALUE=uri:http://example.test/sound.wav"))
 
     check:
       serialized.contains("PHOTO;VALUE=uri:http://example.test/photo.jpg")
       serialized.contains("LOGO;VALUE=uri:http://example.test/logo.gif")
       serialized.contains("SOUND;VALUE=uri:http://example.test/sound.wav")
-      serialized.contains("KEY;VALUE=uri:http://example.test/key.asc")
+
+  test "spec: KEY does not allow uri values":
+    expect(VCardParsingError):
+      discard parseVCards(vcard3Doc(
+        "VERSION:3.0",
+        "FN:John Smith",
+        "N:Smith;John;;;",
+        "KEY;VALUE=uri:http://example.test/key.asc"))
+
+  test "spec: KEY may contain text values that look like uris":
+    let serialized = $parseSingleVCard3(vcard3Doc(
+      "VERSION:3.0",
+      "FN:John Smith",
+      "N:Smith;John;;;",
+      "KEY;TYPE=PGP:http://example.test/key.pgp"))
+
+    check serialized.contains("KEY;TYPE=PGP:http://example.test/key.pgp")
+
+  test "spec: KEY parameters must use name=value syntax in vCard 3":
+    expect(VCardParsingError):
+      discard parseVCards(vcard3Doc(
+        "VERSION:3.0",
+        "FN:John Smith",
+        "N:Smith;John;;;",
+        "KEY;PGP:http://example.test/key.pgp"))
 
   test "spec: quoted parameter values are accepted":
     let parsed = parseSingleVCard3(vcard3Doc(

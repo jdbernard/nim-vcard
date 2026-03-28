@@ -609,10 +609,21 @@ func newVC3_Class*(value: string, group = none[string]()): VC3_Class =
 
 func newVC3_Key*(
   value: string,
-  valueType = some("uri"),
+  valueType = none[string](),
   keyType = none[string](),
   isInline = false,
   group = none[string]()): VC3_Key =
+
+  if valueType.isSome:
+    if valueType.get == $vtUri:
+      raise newException(ValueError,
+        "KEY content does not support the '" & $vtUri & "' value type")
+    elif valueType.get == $vtBinary and not isInline:
+      raise newException(ValueError,
+        "KEY content with VALUE=binary must also specify ENCODING=b")
+    elif valueType.get == $vtText and isInline:
+      raise newException(ValueError,
+        "KEY content with ENCODING=b cannot use VALUE=text")
 
   return assignFields(
     VC3_Key(name: $pnKey, binaryType: keyType),
@@ -855,7 +866,7 @@ proc serialize(r: VC3_Rev): string =
   if r.valueType.isSome and r.valueType.get == "date-time":
     result &= ";VALUE=date-time:" & r.value.format(DATETIME_FMT)
   elif r.valueType.isSome and r.valueType.get == "date":
-    result &= ";VALUE=date-time:" & r.value.format(DATETIME_FMT)
+    result &= ";VALUE=date:" & r.value.format(DATE_FMT)
   else:
     result &= r.value.format(DATETIME_FMT)
 
@@ -1264,11 +1275,20 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       result.add(newVC3_Class(group = group, value = p.readValue))
 
     of $pnKey:
+      let valueType = params.getSingleValue("VALUE")
       let isInline = params.existsWithValue("ENCODING", "B")
+      if valueType.isSome:
+        if valueType.get == $vtUri:
+          p.error("invalid VALUE for KEY content. " &
+                  "Expected '" & $vtText & "' or '" & $vtBinary & "'")
+        elif valueType.get == $vtBinary and not isInline:
+          p.error("KEY content with VALUE=binary must also specify ENCODING=b")
+        elif valueType.get == $vtText and isInline:
+          p.error("KEY content with ENCODING=b cannot use VALUE=text")
       result.add(newVC3_Key(
         group = group,
         value = p.readBinaryValue(isInline, "KEY"),
-        valueType = params.getSingleValue("VALUE"),
+        valueType = valueType,
         keyType = params.getSingleValue("TYPE"),
         isInline = isInline))
 
