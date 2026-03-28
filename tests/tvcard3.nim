@@ -153,6 +153,22 @@ suite "vcard/vcard3":
       serialized.contains("SOUND;ENCODING=b;TYPE=WAVE:" & payload)
       serialized.contains("KEY;ENCODING=b;TYPE=PGP:" & payload)
 
+  test "spec: uri-backed binary properties round-trip as uris":
+    let serialized = $parseSingleVCard3(vcard3Doc(
+      "VERSION:3.0",
+      "FN:John Smith",
+      "N:Smith;John;;;",
+      "PHOTO;VALUE=uri:http://example.test/photo.jpg",
+      "LOGO;VALUE=uri:http://example.test/logo.gif",
+      "SOUND;VALUE=uri:http://example.test/sound.wav",
+      "KEY;VALUE=uri:http://example.test/key.asc"))
+
+    check:
+      serialized.contains("PHOTO;VALUE=uri:http://example.test/photo.jpg")
+      serialized.contains("LOGO;VALUE=uri:http://example.test/logo.gif")
+      serialized.contains("SOUND;VALUE=uri:http://example.test/sound.wav")
+      serialized.contains("KEY;VALUE=uri:http://example.test/key.asc")
+
   test "spec: quoted parameter values are accepted":
     let parsed = parseSingleVCard3(vcard3Doc(
       "VERSION:3.0",

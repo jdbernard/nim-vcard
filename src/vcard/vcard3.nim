@@ -963,6 +963,20 @@ proc readTextValueList(
   result = @[p.readTextValue]
   while seps.contains(p.peek): result.add(p.readTextValue(ignorePrefix = seps))
 
+proc readBinaryValue(
+    p: var VCardParser,
+    isInline: bool,
+    propName: string
+  ): string =
+  let value = p.readValue
+  if not isInline:
+    return value
+
+  try:
+    return base64.decode(value)
+  except ValueError:
+    p.error("invalid base64 value for the " & propName & " content type")
+
 proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
   result = @[]
 
@@ -1035,12 +1049,13 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       result.add(assignCommon(newVC3_Nickname(value = p.readValue)))
 
     of $pnPhoto:
+      let isInline = params.existsWithValue("ENCODING", "B")
       result.add(newVC3_Photo(
         group = group,
-        value = p.readValue,
+        value = p.readBinaryValue(isInline, "PHOTO"),
         valueType = params.getSingleValue("VALUE"),
         binaryType = params.getSingleValue("TYPE"),
-        isInline = params.existsWithValue("ENCODING", "B")))
+        isInline = isInline))
 
     of $pnBday:
       let valueType = params.getSingleValue("VALUE")
@@ -1121,12 +1136,13 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       result.add(assignCommon(newVC3_Role(value = p.readValue)))
 
     of $pnLogo:
+      let isInline = params.existsWithValue("ENCODING", "B")
       result.add(newVC3_Logo(
         group = group,
-        value = p.readValue,
+        value = p.readBinaryValue(isInline, "LOGO"),
         valueType = params.getSingleValue("VALUE"),
         binaryType = params.getSingleValue("TYPE"),
-        isInline = params.existsWithValue("ENCODING", "B")))
+        isInline = isInline))
 
     of $pnAgent:
       let valueParam = params.getSingleValue("VALUE")
@@ -1182,12 +1198,13 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       result.add(assignCommon(newVC3_SortString(value = p.readValue)))
 
     of $pnSound:
+      let isInline = params.existsWithValue("ENCODING", "B")
       result.add(newVC3_Sound(
         group = group,
-        value = p.readValue,
+        value = p.readBinaryValue(isInline, "SOUND"),
         valueType = params.getSingleValue("VALUE"),
         binaryType = params.getSingleValue("TYPE"),
-        isInline = params.existsWithValue("ENCODING", "B")))
+        isInline = isInline))
 
     of $pnUid:
       result.add(newVC3_UID(group = group, value = p.readValue))
@@ -1204,12 +1221,13 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       result.add(newVC3_Class(group = group, value = p.readValue))
 
     of $pnKey:
+      let isInline = params.existsWithValue("ENCODING", "B")
       result.add(newVC3_Key(
         group = group,
-        value = p.readValue,
+        value = p.readBinaryValue(isInline, "KEY"),
         valueType = params.getSingleValue("VALUE"),
         keyType = params.getSingleValue("TYPE"),
-        isInline = params.existsWithValue("ENCODING", "B")))
+        isInline = isInline))
 
     else:
       if not name.startsWith("X-"):
