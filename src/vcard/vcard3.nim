@@ -752,17 +752,28 @@ func serialize(s: VC3_Source): string =
   result &= serialize(s.xParams)
   result &= ":" & s.value
 
+func serializeTextValue(value: string): string =
+  value.multiReplace([
+    ("\\", "\\\\"),
+    ("\n", "\\n"),
+    (";", "\\;"),
+    (",", "\\,")
+  ])
+
+func serializeTextValues(values: seq[string], sep: string): string =
+  (values --> map(serializeTextValue(it))).join(sep)
+
 func serialize(n: VC3_N): string =
   result = n.nameWithGroup
   if n.isPText: result &= ";VALUE=ptext"
   if n.language.isSome: result &= ";LANGUAGE=" & n.language.get
   result &= serialize(n.xParams)
   result &= ":" &
-    n.family.join(",") & ";" &
-    n.given.join(",") & ";" &
-    n.additional.join(",") & ";" &
-    n.prefixes.join(",") & ";" &
-    n.suffixes.join(",")
+    serializeTextValues(n.family, ",") & ";" &
+    serializeTextValues(n.given, ",") & ";" &
+    serializeTextValues(n.additional, ",") & ";" &
+    serializeTextValues(n.prefixes, ",") & ";" &
+    serializeTextValues(n.suffixes, ",")
 
 func serialize(b: VC3_Bday): string =
   result = b.nameWithGroup
@@ -778,13 +789,13 @@ func serialize(a: VC3_Adr): string =
   if a.language.isSome: result &= ";LANGUAGE=" & a.language.get
   result &= serialize(a.xParams)
   result &= ":" &
-    a.poBox & ";" &
-    a.extendedAdr & ";" &
-    a.streetAdr & ";" &
-    a.locality & ";" &
-    a.region & ";" &
-    a.postalCode & ";" &
-    a.country
+    serializeTextValue(a.poBox) & ";" &
+    serializeTextValue(a.extendedAdr) & ";" &
+    serializeTextValue(a.streetAdr) & ";" &
+    serializeTextValue(a.locality) & ";" &
+    serializeTextValue(a.region) & ";" &
+    serializeTextValue(a.postalCode) & ";" &
+    serializeTextValue(a.country)
 
 proc serialize(t: VC3_Tel): string =
   result = t.nameWithGroup
@@ -801,7 +812,7 @@ func serialize(s: VC3_SimpleTextProperty): string =
   if s.isPText: result &= ";VALUE=ptext"
   if s.language.isSome: result &= ";LANGUAGE=" & s.language.get
   result &= serialize(s.xParams)
-  result &= ":" & s.value
+  result &= ":" & serializeTextValue(s.value)
 
 proc serialize(b: VC3_BinaryProperty): string =
   result = b.nameWithGroup
@@ -830,14 +841,14 @@ proc serialize(o: VC3_Org): string =
   if o.isPText: result &= ";VALUE=ptext"
   if o.language.isSome: result &= ";LANGUAGE=" & o.language.get
   result &= serialize(o.xParams)
-  result &= ":" & o.value.join(",")
+  result &= ":" & serializeTextValues(o.value, ",")
 
 proc serialize(c: VC3_Categories): string =
   result = c.nameWithGroup
   if c.isPText: result &= ";VALUE=ptext"
   if c.language.isSome: result &= ";LANGUAGE=" & c.language.get
   result &= serialize(c.xParams)
-  result &= ":" & c.value.join(",")
+  result &= ":" & serializeTextValues(c.value, ",")
 
 proc serialize(r: VC3_Rev): string =
   result = r.nameWithGroup
@@ -963,6 +974,30 @@ proc readTextValueList(
   result = @[p.readTextValue]
   while seps.contains(p.peek): result.add(p.readTextValue(ignorePrefix = seps))
 
+proc decodeTextValue(p: var VCardParser, value: string): string =
+  result = newStringOfCap(value.len)
+  var idx = 0
+
+  while idx < value.len:
+    let c = value[idx]
+    if c != '\\':
+      result.add(c)
+      inc idx
+      continue
+
+    if idx + 1 >= value.len:
+      p.error("invalid character escape: '\\'")
+
+    case value[idx + 1]
+    of '\\', ';', ',':
+      result.add(value[idx + 1])
+    of 'n', 'N':
+      result.add('\n')
+    else:
+      p.error("invalid character escape: '\\$1'" % [$value[idx + 1]])
+
+    inc idx, 2
+
 proc readBinaryValue(
     p: var VCardParser,
     isInline: bool,
@@ -1035,7 +1070,8 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         xParams = params.getXParams))
 
     of $pnFn:
-      result.add(assignCommon(newVC3_Fn(value = p.readValue)))
+      result.add(assignCommon(newVC3_Fn(
+        value = p.decodeTextValue(p.readValue))))
 
     of $pnN:
       result.add(assignCommon(newVC3_N(
@@ -1046,7 +1082,8 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         suffixes = p.readTextValueList(ifPrefix = some(';')))))
 
     of $pnNickname:
-      result.add(assignCommon(newVC3_Nickname(value = p.readValue)))
+      result.add(assignCommon(newVC3_Nickname(
+        value = p.decodeTextValue(p.readValue))))
 
     of $pnPhoto:
       let isInline = params.existsWithValue("ENCODING", "B")
@@ -1093,7 +1130,7 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
 
     of $pnLabel:
       result.add(assignCommon(newVC3_Label(
-        value = p.readValue,
+        value = p.decodeTextValue(p.readValue),
         adrType = params.getMultipleValues("TYPE"))))
 
     of $pnTel:
@@ -1109,7 +1146,8 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
         emailType = params.getMultipleValues("TYPE")))
 
     of $pnMailer:
-      result.add(assignCommon(newVC3_Mailer(value = p.readValue)))
+      result.add(assignCommon(newVC3_Mailer(
+        value = p.decodeTextValue(p.readValue))))
 
     of $pnTz:
       result.add(newVC3_Tz(
@@ -1130,10 +1168,12 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
           "content type but received '" & rawValue & "'")
 
     of $pnTitle:
-      result.add(assignCommon(newVC3_Title(value = p.readValue)))
+      result.add(assignCommon(newVC3_Title(
+        value = p.decodeTextValue(p.readValue))))
 
     of $pnRole:
-      result.add(assignCommon(newVC3_Role(value = p.readValue)))
+      result.add(assignCommon(newVC3_Role(
+        value = p.decodeTextValue(p.readValue))))
 
     of $pnLogo:
       let isInline = params.existsWithValue("ENCODING", "B")
@@ -1168,7 +1208,8 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       result.add(assignCommon(newVC3_Note(value = p.readTextValue)))
 
     of $pnProdid:
-      result.add(assignCommon(newVC3_Prodid(value = p.readValue)))
+      result.add(assignCommon(newVC3_Prodid(
+        value = p.decodeTextValue(p.readValue))))
 
     of $pnRev:
       let valueType = params.getSingleValue("VALUE")
@@ -1195,7 +1236,8 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       ))
 
     of $pnSortString:
-      result.add(assignCommon(newVC3_SortString(value = p.readValue)))
+      result.add(assignCommon(newVC3_SortString(
+        value = p.decodeTextValue(p.readValue))))
 
     of $pnSound:
       let isInline = params.existsWithValue("ENCODING", "B")

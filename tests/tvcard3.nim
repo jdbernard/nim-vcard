@@ -112,6 +112,35 @@ suite "vcard/vcard3":
 
     check parsed.fn.value == "Jane, Smith; Esq.\\Office\nSecond line"
 
+  test "spec: affected text properties decode RFC 2426 escapes when parsing":
+    let parsed = parseSingleVCard3(vcard3Doc(
+      "VERSION:3.0",
+      "FN:John Smith",
+      "N:Smith;John;;;",
+      r"NICKNAME:Johnny\, Jr.\nTwo",
+      r"LABEL:123 Main St.\nSuite 100\; Mail Stop",
+      r"MAILER:Mailer\\Pro",
+      r"TITLE:Lead\; Engineer",
+      r"ROLE:Ops\, Support",
+      r"PRODID:-//Example\\Corp//EN",
+      r"SORT-STRING:Smith\, John"))
+
+    check:
+      parsed.nickname.isSome
+      parsed.nickname.get.value == "Johnny, Jr.\nTwo"
+      parsed.label.len == 1
+      parsed.label[0].value == "123 Main St.\nSuite 100; Mail Stop"
+      parsed.mailer.len == 1
+      parsed.mailer[0].value == "Mailer\\Pro"
+      parsed.title.len == 1
+      parsed.title[0].value == "Lead; Engineer"
+      parsed.role.len == 1
+      parsed.role[0].value == "Ops, Support"
+      parsed.prodid.isSome
+      parsed.prodid.get.value == "-//Example\\Corp//EN"
+      parsed.sortstring.isSome
+      parsed.sortstring.get.value == "Smith, John"
+
   test "spec: simple text values escape special characters when serializing":
     let vc = newMinimalVCard3()
     vc.set(newVC3_Fn("Jane, Smith; Esq.\\Office\nSecond line"))
