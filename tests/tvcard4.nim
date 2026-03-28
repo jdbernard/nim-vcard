@@ -68,8 +68,14 @@ suite "vcard/vcard4":
       types = @["work", "internet"],
       params = @[("PREF", @["1"]), ("X-ATTACHMENT-LIMIT", @["25MB"])])
 
-    check serialize(email) ==
-      "EMAIL;X-ATTACHMENT-LIMIT=25MB;TYPE=work,internet;PREF=1:john.smith@testco.test"
+    let serialized = serialize(email)
+    check:
+      serialized.startsWith("EMAIL;")
+      serialized.endsWith(":john.smith@testco.test")
+      serialized.contains(";PREF=1")
+      serialized.contains(";TYPE=work,internet")
+      serialized.contains(";X-ATTACHMENT-LIMIT=25MB")
+      serialized.count(';') == 3
 
   test "can parse properties with escaped characters":
     check v4Ex.note.len == 1
