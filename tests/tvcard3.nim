@@ -1,7 +1,8 @@
-import options, unittest, zero_functional
+import std/[options, strutils, times, unittest]
+import zero_functional
 
-import ./vcard
-import ./vcard/vcard3
+import vcard
+import vcard/vcard3
 
 suite "vcard/vcard3":
 

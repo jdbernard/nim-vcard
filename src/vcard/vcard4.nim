@@ -842,7 +842,7 @@ macro genPropAccessors(
     of vpcAtLeastOne, vpcAny:
       let funcDef = genAstOpt({kDirtyTemplate}, funcName, typeName):
         func funcName*(vc4: VCard4): seq[typeName] =
-          result = findAll[typeName](vc4.content)
+          result = findAll[typeName, VC4_Property](vc4.content)
       result.add(funcDef)
 
 macro genNameAccessors(propNames: static[seq[VC4_PropertyName]]): untyped =

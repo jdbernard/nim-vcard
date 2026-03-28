@@ -1,8 +1,8 @@
 import std/[options, strutils, tables, unittest]
 import zero_functional
 
-import ./vcard
-import ./vcard/vcard4
+import vcard
+import vcard/vcard4
 
 suite "vcard/vcard4":
 

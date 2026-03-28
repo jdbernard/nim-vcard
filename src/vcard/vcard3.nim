@@ -661,7 +661,7 @@ macro genPropertyAccessors(
     of vpcAtMostOne:
       let funcDef = genAstOpt({kDirtyTemplate}, funcName, typeName):
         func funcName*(vc3: VCard3): Option[typeName] =
-          result = findFirst[typeName](vc3.content)
+          result = findFirst[typeName, VC3_Property](vc3.content)
       funcDef[6].insert(0, newCommentStmtNode(
         "Return the single " & $pn & " property (if present)."))
       result.add(funcDef)
@@ -670,7 +670,7 @@ macro genPropertyAccessors(
     of vpcExactlyOne:
       let funcDef = genAstOpt({kDirtyTemplate}, funcName, pn, typeName):
         func funcName*(vc3: VCard3): typeName =
-          let props = findAll[typeName](vc3.content)
+          let props = findAll[typeName, VC3_Property](vc3.content)
           if props.len != 1:
             raise newException(ValueError,
               "VCard should have exactly one $# property, but $# were found" %
@@ -683,7 +683,7 @@ macro genPropertyAccessors(
     of vpcAtLeastOne, vpcAny:
       let funcDef = genAstOpt({kDirtyTemplate}, funcName, typeName):
         func funcName*(vc3: VCard3): seq[typeName] =
-          result = findAll[typeName](vc3.content)
+          result = findAll[typeName, VC3_Property](vc3.content)
       funcDef[6].insert(0, newCommentStmtNode(
         "Return all instances of the " & $pn & " property."))
       result.add(funcDef)
@@ -693,7 +693,7 @@ genPropertyAccessors(propertyCardMap.pairs.toSeq -->
 
 func version*(vc3: VCard3): VC3_Version =
   ## Return the VERSION property.
-  let found = findFirst[VC3_Version](vc3.content)
+  let found = findFirst[VC3_Version, VC3_Property](vc3.content)
   if found.isSome: return found.get
   else: return VC3_Version(
     propertyId: vc3.content.len + 1,
@@ -701,7 +701,7 @@ func version*(vc3: VCard3): VC3_Version =
     name: "VERSION",
     value: "3.0")
 
-func xTypes*(vc3: VCard3): seq[VC3_XType] = findAll[VC3_XType](vc3.content)
+func xTypes*(vc3: VCard3): seq[VC3_XType] = findAll[VC3_XType, VC3_Property](vc3.content)
   ## Return all extended properties (starting with `x-`).
 
 # Setters
