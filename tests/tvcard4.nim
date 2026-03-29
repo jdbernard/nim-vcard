@@ -324,6 +324,43 @@ suite "vcard/vcard4":
         parsed.anniversary.isSome
         parsed.anniversary.get.calscale == some("gregorian")
 
+  test "spec: unsupported standard parameters are rejected on known properties":
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN;SORT-AS=Smith:John Smith"))
+
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "EMAIL;LABEL=Inbox:test@example.com"))
+
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "ORG;CALSCALE=gregorian:Example Corp"))
+
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "CLIENTPIDMAP;PID=1.1:1;urn:uuid:client-map"))
+
+  test "spec: CALSCALE is rejected when BDAY or ANNIVERSARY use VALUE=text":
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "BDAY;VALUE=text;CALSCALE=gregorian:circa 1800"))
+
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "ANNIVERSARY;VALUE=text;CALSCALE=gregorian:childhood"))
+
   test "can parse properties with escaped characters":
     check v4Ex.note.len == 1
     let note = v4Ex.note[0]
