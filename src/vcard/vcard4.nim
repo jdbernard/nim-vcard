@@ -916,7 +916,7 @@ macro genPidAccessors(props: static[openarray[VC4_PropertyName]]): untyped =
 
     let pidFunc = genAstOpt({kDirtyTemplate}, typeName):
       func pid*(prop: typeName): seq[PidValue] =
-        let pidParam = prop.params --> find(it.name == "PREF")
+        let pidParam = prop.params --> find(it.name == "PID")
         if pidParam.isSome: return parsePidValues(pidParam.get)
         else: return @[]
     result.add(pidFunc)
