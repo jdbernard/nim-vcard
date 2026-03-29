@@ -259,6 +259,71 @@ suite "vcard/vcard4":
       "ORG:ABC\\, Inc.;North American Division;Marketing"))
     check serialize(parsed.org[0]) == "ORG:ABC\\, Inc.;North American Division;Marketing"
 
+  test "spec: N and ORG support SORT-AS through the typed API":
+    check:
+      compiles(newVC4_N(
+        family = @["van der Harten"],
+        given = @["Rene"],
+        sortAs = @["Harten", "Rene"]))
+      compiles(newVC4_Org(
+        value = @["ABC, Inc.", "Marketing"],
+        sortAs = @["ABC Inc.", "Marketing"]))
+
+    when compiles(newVC4_N(
+        family = @["van der Harten"],
+        given = @["Rene"],
+        sortAs = @["Harten", "Rene"])) and
+         compiles(newVC4_Org(
+           value = @["ABC, Inc.", "Marketing"],
+           sortAs = @["ABC Inc.", "Marketing"])):
+      check:
+        serialize(newVC4_N(
+          family = @["van der Harten"],
+          given = @["Rene"],
+          sortAs = @["Harten", "Rene"])) ==
+            "N;SORT-AS=Harten,Rene:van der Harten;Rene;;;"
+        serialize(newVC4_Org(
+          value = @["ABC, Inc.", "Marketing"],
+          sortAs = @["ABC Inc.", "Marketing"])) ==
+            "ORG;SORT-AS=ABC Inc.,Marketing:ABC\\, Inc.;Marketing"
+
+      let parsed = parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:Rene van der Harten",
+        "N;SORT-AS=Harten,Rene:van der Harten;Rene;;;",
+        "ORG;SORT-AS=ABC Inc.,Marketing:ABC\\, Inc.;Marketing"))
+      check:
+        parsed.n.isSome
+        parsed.n.get.sortAs == @["Harten", "Rene"]
+        parsed.org.len == 1
+        parsed.org[0].sortAs == @["ABC Inc.", "Marketing"]
+
+  test "spec: BDAY and ANNIVERSARY support CALSCALE through the typed API":
+    check:
+      compiles(newVC4_Bday(value = "19960415", calscale = some("gregorian")))
+      compiles(newVC4_Anniversary(value = "20140612", calscale = some("gregorian")))
+
+    when compiles(newVC4_Bday(value = "19960415", calscale = some("gregorian"))) and
+         compiles(newVC4_Anniversary(value = "20140612", calscale = some("gregorian"))):
+      check:
+        serialize(newVC4_Bday(value = "19960415", calscale = some("gregorian"))) ==
+          "BDAY;CALSCALE=gregorian:19960415"
+        serialize(newVC4_Anniversary(
+          value = "20140612",
+          calscale = some("gregorian"))) ==
+            "ANNIVERSARY;CALSCALE=gregorian:20140612"
+
+      let parsed = parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "BDAY;CALSCALE=gregorian:19960415",
+        "ANNIVERSARY;CALSCALE=gregorian:20140612"))
+      check:
+        parsed.bday.isSome
+        parsed.bday.get.calscale == some("gregorian")
+        parsed.anniversary.isSome
+        parsed.anniversary.get.calscale == some("gregorian")
+
   test "can parse properties with escaped characters":
     check v4Ex.note.len == 1
     let note = v4Ex.note[0]
