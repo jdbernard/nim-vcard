@@ -1,8 +1,16 @@
-import std/[options, sequtils, strutils, tables, unittest]
+import std/[options, sequtils, strutils, tables, times, unittest]
 import zero_functional
 
 import vcard
 import vcard/vcard4
+
+template vcard4Doc(lines: varargs[string]): string =
+  "BEGIN:VCARD\r\n" &
+  lines.join("\r\n") &
+  "\r\nEND:VCARD\r\n"
+
+proc parseSingleVCard4(content: string): VCard4 =
+  cast[VCard4](parseVCards(content)[0])
 
 suite "vcard/vcard4":
 
@@ -76,6 +84,67 @@ suite "vcard/vcard4":
       serialized.contains(";TYPE=work,internet")
       serialized.contains(";X-ATTACHMENT-LIMIT=25MB")
       serialized.count(';') == 3
+
+  test "spec: text-or-uri constructors serialize non-empty values":
+    check:
+      serialize(newVC4_Tel(value = "tel:+1-555-555-5555")) ==
+        "TEL:tel:+1-555-555-5555"
+      serialize(newVC4_Related(value = "urn:uuid:person-1")) ==
+        "RELATED:urn:uuid:person-1"
+      serialize(newVC4_Uid(value = "urn:uuid:card-1")) ==
+        "UID:urn:uuid:card-1"
+      serialize(newVC4_Key(value = "https://example.com/keys/john.asc")) ==
+        "KEY:https://example.com/keys/john.asc"
+
+  test "spec: text-list properties serialize parameters exactly once":
+    let nickname = newVC4_Nickname(value = @["Doc"], types = @["work"])
+    check serialize(nickname) == "NICKNAME;TYPE=work:Doc"
+
+  test "spec: handwritten serializers preserve group prefixes":
+    let rev = newVC4_Rev(value = now(), group = some("item1"))
+    check:
+      serialize(newVC4_N(family = @["Doe"], group = some("item1"))) ==
+        "item1.N:Doe;;;;"
+      serialize(newVC4_Adr(street = "Main", group = some("item1"))) ==
+        "item1.ADR:;;Main;;;;"
+      serialize(newVC4_Gender(sex = some(VC4_Sex.Male), group = some("item1"))) ==
+        "item1.GENDER:M"
+      serialize(newVC4_ClientPidMap(
+        id = 1,
+        uri = "urn:uuid:client-map",
+        group = some("item1"))) ==
+          "item1.CLIENTPIDMAP:1;urn:uuid:client-map"
+      serialize(rev).startsWith("item1.REV:")
+
+  test "spec: text-valued BDAY and ANNIVERSARY serialize with VALUE=text":
+    check:
+      serialize(newVC4_Bday(value = "circa 1800", valueType = some("text"))) ==
+        "BDAY;VALUE=text:circa 1800"
+      serialize(newVC4_Anniversary(value = "childhood", valueType = some("text"))) ==
+        "ANNIVERSARY;VALUE=text:childhood"
+
+  test "spec: URI properties round-trip MEDIATYPE":
+    let photo = newVC4_Photo(
+      value = "https://example.com/photo.jpg",
+      mediaType = some("image/jpeg"))
+    check serialize(photo) == "PHOTO;MEDIATYPE=image/jpeg:https://example.com/photo.jpg"
+
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN:John Smith",
+      "PHOTO;MEDIATYPE=image/jpeg:https://example.com/photo.jpg"))
+    check:
+      parsed.photo.len == 1
+      parsed.photo[0].mediaType == some("image/jpeg")
+
+  test "spec: typed PID accessors expose parsed PID values":
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN:John Smith",
+      "EMAIL;PID=1.7:test@example.com"))
+    check:
+      parsed.email.len == 1
+      parsed.email[0].pid == @[PidValue(propertyId: 1, sourceId: 7)]
 
   test "can parse properties with escaped characters":
     check v4Ex.note.len == 1
