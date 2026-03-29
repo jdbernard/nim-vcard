@@ -1,0 +1,3 @@
+[submodule "vcard-test-suite"]
+	path = vcard-test-suite
+	url = https://gitlab.com/pwithnall/vcard-test-suite.git
