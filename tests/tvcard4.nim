@@ -1,4 +1,4 @@
-import std/[options, strutils, tables, unittest]
+import std/[options, sequtils, strutils, tables, unittest]
 import zero_functional
 
 import vcard
@@ -203,12 +203,21 @@ suite "vcard/vcard4":
       madeUpProp.value == "Sample value for my made-up prop."
 
   let cardWithAltBdayStr = testVCardTemplate % [(
+    "FN:Simon Perreault\r\n" &
     "BDAY;VALUE=text;ALTID=1:20th century\r\n" &
     "BDAY;VALUE=date-and-or-time;ALTID=1:19650321\r\n"
   )]
 
   test "single-cardinality properties allow multiples with ALTID":
     check parseVCards(cardWithAltBdayStr).len == 1
+
+  test "single-cardinality properties reject multiples without ALTID":
+    expect(VCardParsingError):
+      discard parseVCards(testVCardTemplate % [(
+        "FN:Simon Perreault\r\n" &
+        "BDAY;VALUE=text:20th century\r\n" &
+        "BDAY;VALUE=date-and-or-time:19650321\r\n"
+      )])
 
   let hasAltBdays = cast[VCard4](parseVCards(cardWithAltBdayStr)[0])
 
@@ -222,6 +231,7 @@ suite "vcard/vcard4":
     check:
       hasAltBdays.content.len == 3
       hasAltBdays.bday.isSome
+      hasAltBdays.content.countIt(it of VC4_Version) == 0
 
     let allBdays = allAlternatives[VC4_Bday](hasAltBdays)
     check:

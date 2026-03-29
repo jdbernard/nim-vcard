@@ -968,6 +968,56 @@ genPidAccessors(supportedParams["PID"].toSeq())
 genPrefAccessors(supportedParams["PREF"].toSeq())
 genTypeAccessors(supportedParams["TYPE"].toSeq())
 
+func countCardinalityInstances(vc4: VCard4, propName: string): int =
+  var altIds = initHashSet[string]()
+
+  for p in vc4.content:
+    if p.name != propName:
+      continue
+
+    if p.altId.isSome:
+      altIds.incl(p.altId.get)
+    else:
+      inc result
+
+  result += altIds.len
+
+func validate*(vc4: VCard4): void =
+  ## Validate property cardinality for a vCard 4.0 card.
+  for pn in VC4_PropertyName:
+    if pn == pnVersion:
+      continue
+
+    if not propertyCardMap.contains(pn):
+      continue
+
+    let rawCount = vc4.content.countIt(it.name == $pn)
+    let cardinalityCount =
+      case propertyCardMap[pn]
+      of vpcExactlyOne, vpcAtMostOne:
+        vc4.countCardinalityInstances($pn)
+      of vpcAtLeastOne, vpcAny:
+        rawCount
+
+    case propertyCardMap[pn]
+    of vpcExactlyOne:
+      if cardinalityCount != 1:
+        raise newException(ValueError,
+          "VCard should have exactly one $# property, but $# were found" %
+            [$pn, $cardinalityCount])
+    of vpcAtLeastOne:
+      if cardinalityCount < 1:
+        raise newException(ValueError,
+          "VCard should have at least one $# property, but $# were found" %
+            [$pn, $cardinalityCount])
+    of vpcAtMostOne:
+      if cardinalityCount > 1:
+        raise newException(ValueError,
+          ("VCard should have at most one $# property, but $# " &
+           "distinct properties were found") % [$pn, $cardinalityCount])
+    of vpcAny:
+      discard
+
 # Setters
 # =============================================================================
 
@@ -1382,6 +1432,7 @@ macro genPropParsers(
 
 proc parseContentLines*(p: var VCardParser): seq[VC4_Property] =
   result = @[]
+  var sawVersion = false
 
   while true:
     let group = p.readGroup
@@ -1392,9 +1443,19 @@ proc parseContentLines*(p: var VCardParser): seq[VC4_Property] =
     let params = p.readParams
     p.expect(":")
 
-    genPropParsers(fixedValueTypeProperties, group, name, params, result, p)
+    if name == $pnVersion:
+      if sawVersion:
+        p.error("VCard should have exactly one VERSION property, but 2 were found")
+      p.validateType(params, vtText)
+      p.expect("4.0")
+      sawVersion = true
+    else:
+      genPropParsers(fixedValueTypeProperties, group, name, params, result, p)
 
     p.expect(CRLF)
+
+  if not sawVersion:
+    p.error("VCard should have exactly one VERSION property, but 0 were found")
 
 
 # Private Function Unit Tests

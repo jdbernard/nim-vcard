@@ -55,6 +55,14 @@ proc readVCard*(p: var VCardParser): VCard =
   if result.parsedVersion == VCardV3:
     while (p.skip(CRLF, true)): discard
 
+  try:
+    if result.parsedVersion == VCardV3:
+      cast[VCard3](result).validate()
+    else:
+      cast[VCard4](result).validate()
+  except ValueError as exc:
+    p.error(exc.msg)
+
 proc initVCardParser*(input: Stream, filename = "input"): VCardParser =
   result.filename = filename
   lexer.open(result, input)

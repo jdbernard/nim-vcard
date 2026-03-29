@@ -707,17 +707,38 @@ genPropertyAccessors(propertyCardMap.pairs.toSeq -->
   filter(not [pnVersion].contains(it[0])))
 
 func version*(vc3: VCard3): VC3_Version =
-  ## Return the VERSION property.
-  let found = findFirst[VC3_Version, VC3_Property](vc3.content)
-  if found.isSome: return found.get
-  else: return VC3_Version(
-    propertyId: vc3.content.len + 1,
-    group: none[string](),
-    name: "VERSION",
-    value: "3.0")
+  ## Return the canonical VERSION property for a vCard 3.0 card.
+  result = newVC3_Version()
 
 func xTypes*(vc3: VCard3): seq[VC3_XType] = findAll[VC3_XType, VC3_Property](vc3.content)
   ## Return all extended properties (starting with `x-`).
+
+func validate*(vc3: VCard3): void =
+  ## Validate property cardinality for a vCard 3.0 card.
+  for pn in VC3_PropertyName:
+    if pn == pnVersion:
+      continue
+
+    let count = vc3.content.countIt(it.name == $pn)
+
+    case propertyCardMap[pn]
+    of vpcExactlyOne:
+      if count != 1:
+        raise newException(ValueError,
+          "VCard should have exactly one $# property, but $# were found" %
+            [$pn, $count])
+    of vpcAtLeastOne:
+      if count < 1:
+        raise newException(ValueError,
+          "VCard should have at least one $# property, but $# were found" %
+            [$pn, $count])
+    of vpcAtMostOne:
+      if count > 1:
+        raise newException(ValueError,
+          "VCard should have at most one $# property, but $# were found" %
+            [$pn, $count])
+    of vpcAny:
+      discard
 
 # Setters
 # =============================================================================
@@ -1030,6 +1051,7 @@ proc readBinaryValue(
 
 proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
   result = @[]
+  var sawVersion = false
 
   macro assignCommon(assign: untyped): untyped =
     result = assign
@@ -1271,9 +1293,11 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
       result.add(newVC3_URL(group = group, value = p.readValue))
 
     of $pnVersion:
+      if sawVersion:
+        p.error("VCard should have exactly one VERSION property, but 2 were found")
       p.expect("3.0")
       p.validateNoParameters(params, "VERSION")
-      result.add(newVC3_Version(group = group))
+      sawVersion = true
 
     of $pnClass:
       result.add(newVC3_Class(group = group, value = p.readValue))
@@ -1311,6 +1335,9 @@ proc parseContentLines*(p: var VCardParser): seq[VC3_Property] =
           map((name: it.name, value: it.values.join(",")))))
 
     p.expect("\r\n")
+
+  if not sawVersion:
+    p.error("VCard should have exactly one VERSION property, but 0 were found")
 
 #[
 Simplified Parsing Diagram

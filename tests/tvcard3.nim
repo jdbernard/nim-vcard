@@ -1,4 +1,4 @@
-import std/[options, strutils, times, unittest]
+import std/[options, sequtils, strutils, times, unittest]
 import zero_functional
 
 import vcard
@@ -57,6 +57,7 @@ suite "vcard/vcard3":
       "BEGIN:vCard\r\n" &
       "VERSION:3.0\r\n" &
       "FN:Frank Dawson\r\n" &
+      "N:Dawson;Frank;;;\r\n" &
       "ORG:Lotus Development Corporation\r\n" &
       "ADR;TYPE=WORK,POSTAL,PARCEL:;;6544 Battleford Drive\r\n" &
       " ;Raleigh;NC;27613-3502;U.S.A.\r\n" &
@@ -71,6 +72,7 @@ suite "vcard/vcard3":
       "BEGIN:vCard\r\n" &
       "VERSION:3.0\r\n" &
       "FN:Tim Howes\r\n" &
+      "N:Howes;Tim;;;\r\n" &
       "ORG:Netscape Communications Corp.\r\n" &
       "ADR;TYPE=WORK:;;501 E. Middlefield Rd.;Mountain View;\r\n" &
       " CA; 94043;U.S.A.\r\n" &
@@ -103,6 +105,25 @@ suite "vcard/vcard3":
       discard parseVCards(vcard3Doc(
         "VERSION:3.0",
         "FN:John Smith"))
+
+  test "spec: parser rejects duplicate single-cardinality vCard 3 properties":
+    expect(VCardParsingError):
+      discard parseVCards(vcard3Doc(
+        "VERSION:3.0",
+        "FN:John Smith",
+        "N:Smith;John;;;",
+        "BDAY:2000-01-01",
+        "BDAY:2000-01-02"))
+
+  test "spec: VERSION is not stored as vCard 3 content":
+    let parsed = parseSingleVCard3(vcard3Doc(
+      "VERSION:3.0",
+      "FN:John Smith",
+      "N:Smith;John;;;"))
+
+    check:
+      parsed.version.value == "3.0"
+      parsed.content.countIt(it of VC3_Version) == 0
 
   test "spec: simple text values decode RFC 2426 escapes when parsing":
     let parsed = parseSingleVCard3(vcard3Doc(
