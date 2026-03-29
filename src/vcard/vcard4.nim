@@ -1034,6 +1034,15 @@ func altId*(p: VC4_Property): Option[string] =
 func valueType*(p: VC4_Property): Option[string] =
   p.params.getSingleValue("VALUE")
 
+func geo*(prop: VC4_Adr): Option[string] =
+  prop.params.getSingleValue("GEO")
+
+func label*(prop: VC4_Adr): Option[string] =
+  prop.params.getSingleValue("LABEL")
+
+func tz*(prop: VC4_Adr): Option[string] =
+  prop.params.getSingleValue("TZ")
+
 func allAlternatives*[T](vc4: VCard4): Table[string, seq[T]] =
   result = initTable[string, seq[T]]()
 
