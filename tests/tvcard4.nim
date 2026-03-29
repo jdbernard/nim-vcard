@@ -361,6 +361,51 @@ suite "vcard/vcard4":
         "FN:John Smith",
         "ANNIVERSARY;VALUE=text;CALSCALE=gregorian:childhood"))
 
+  test "spec: MEMBER requires KIND=group":
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "MEMBER:urn:uuid:person-1"))
+
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "KIND:group",
+      "FN:The Doe Family",
+      "MEMBER:urn:uuid:person-1"))
+    check parsed.member.len == 1
+
+  test "spec: PID identifiers require positive values and matching CLIENTPIDMAP":
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "EMAIL;PID=1.1:test@example.com"))
+
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "EMAIL;PID=0.1:test@example.com",
+        "CLIENTPIDMAP:1;urn:uuid:device-1"))
+
+    expect(VCardParsingError):
+      discard parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "EMAIL;PID=1.0:test@example.com",
+        "CLIENTPIDMAP:0;urn:uuid:device-1"))
+
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN:John Smith",
+      "EMAIL;PID=1.1:test@example.com",
+      "CLIENTPIDMAP:1;urn:uuid:device-1"))
+    check:
+      parsed.email.len == 1
+      parsed.clientpidmap.len == 1
+      parsed.email[0].pid == @[PidValue(propertyId: 1, sourceId: 1)]
+
   test "can parse properties with escaped characters":
     check v4Ex.note.len == 1
     let note = v4Ex.note[0]
