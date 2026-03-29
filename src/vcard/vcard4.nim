@@ -389,6 +389,12 @@ func asComponentList(value: string): seq[string] =
   else:
     @[]
 
+func normalizeStructuredParamValues(values: seq[string]): seq[string] =
+  if values.len == 1 and values[0].contains(","):
+    values[0].split(",")
+  else:
+    values
+
 proc parseDateAndOrTime[T](
     prop: var T,
     value: string
@@ -583,11 +589,13 @@ macro genDateTimeOrTextPropInitializers(
     let datetimeFuncDef = genAstOpt({kDirtyTemplate}, enumName, initFuncName, typeName):
       func initFuncName*(
           value: DateTime,
+          calscale: Option[string] = none[string](),
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
           params: seq[VC_Param] = @[]): typeName =
         return typeName(
           params: flattenParameters(params,
+            ("CALSCALE", if calscale.isSome: @[calscale.get] else: @[]),
             ("ALTID", if altId.isSome: @[altId.get] else: @[])),
           group: group,
           value: value.format(TIMESTAMP_FORMATS[0]),
@@ -604,11 +612,13 @@ macro genDateTimeOrTextPropInitializers(
       proc initFuncName*(
           value: string,
           valueType: Option[string] = some($vtDateAndOrTime),
+          calscale: Option[string] = none[string](),
           altId: Option[string] = none[string](),
           group: Option[string] = none[string](),
           params: seq[VC_Param] = @[]): typeName =
         result = typeName(
           params: flattenParameters(params,
+            ("CALSCALE", if calscale.isSome: @[calscale.get] else: @[]),
             ("ALTID", if altId.isSome: @[altId.get] else: @[]),
             ("VALUE",
               if valueType.isSome and valueType.get == $vtText: @[$vtText]
@@ -740,12 +750,14 @@ func newVC4_N*(
     additional: seq[string] = @[],
     prefixes: seq[string] = @[],
     suffixes: seq[string] = @[],
+    sortAs: seq[string] = @[],
     altId: Option[string] = none[string](),
     group: Option[string] = none[string](),
     params: seq[VC_Param] = @[]): VC4_N =
 
   return assignFields(
     VC4_N(params: flattenParameters(params,
+      ("SORT-AS", sortAs),
       ("ALTID", if altId.isSome: @[altId.get] else: @[]))),
     group, family, given, additional, prefixes, suffixes)
 
@@ -763,6 +775,7 @@ func newVC4_Gender*(
 
 func newVC4_Org*(
     value: seq[string],
+    sortAs: seq[string] = @[],
     altId: Option[string] = none[string](),
     group: Option[string] = none[string](),
     language: Option[string] = none[string](),
@@ -776,6 +789,7 @@ func newVC4_Org*(
 
   return assignFields(
     VC4_Org(params: flattenParameters(params,
+      ("SORT-AS", sortAs),
       ("ALTID", if altId.isSome: @[altId.get] else: @[]),
       ("LANGUAGE", if language.isSome: @[language.get] else: @[]),
       ("PID", pids --> map($it)),
@@ -785,6 +799,7 @@ func newVC4_Org*(
 
 func newVC4_Org*(
     value: string,
+    sortAs: seq[string] = @[],
     altId: Option[string] = none[string](),
     group: Option[string] = none[string](),
     language: Option[string] = none[string](),
@@ -795,6 +810,7 @@ func newVC4_Org*(
 
   return newVC4_Org(
     value = asComponentList(value),
+    sortAs = sortAs,
     altId = altId,
     group = group,
     language = language,
@@ -1033,6 +1049,23 @@ func altId*(p: VC4_Property): Option[string] =
 
 func valueType*(p: VC4_Property): Option[string] =
   p.params.getSingleValue("VALUE")
+
+func calscale*(prop: VC4_DateTimeOrTextProperty): Option[string] =
+  prop.params.getSingleValue("CALSCALE")
+
+func sortAs*(prop: VC4_N): seq[string] =
+  let sortAsParam = prop.params --> find(it.name == "SORT-AS")
+  if sortAsParam.isSome:
+    normalizeStructuredParamValues(sortAsParam.get.values)
+  else:
+    @[]
+
+func sortAs*(prop: VC4_Org): seq[string] =
+  let sortAsParam = prop.params --> find(it.name == "SORT-AS")
+  if sortAsParam.isSome:
+    normalizeStructuredParamValues(sortAsParam.get.values)
+  else:
+    @[]
 
 func geo*(prop: VC4_Adr): Option[string] =
   prop.params.getSingleValue("GEO")
