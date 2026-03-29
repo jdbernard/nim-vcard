@@ -601,7 +601,10 @@ macro genDateTimeOrTextPropInitializers(
           params: seq[VC_Param] = @[]): typeName =
         result = typeName(
           params: flattenParameters(params,
-            ("ALTID", if altId.isSome: @[altId.get] else: @[])),
+            ("ALTID", if altId.isSome: @[altId.get] else: @[]),
+            ("VALUE",
+              if valueType.isSome and valueType.get == $vtText: @[$vtText]
+              else: @[])),
           group: group,
           value: value,
           valueType: vtText)
