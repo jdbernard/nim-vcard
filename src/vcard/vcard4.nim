@@ -702,7 +702,8 @@ macro genUriPropInitializers(
           params: seq[VC_Param] = @[]): typeName =
         return typeName(
           params: flattenParameters(params,
-            ("ALTID", if altId.isSome: @[altId.get] else: @[])),
+            ("ALTID", if altId.isSome: @[altId.get] else: @[]),
+            ("MEDIATYPE", if mediaType.isSome: @[mediaType.get] else: @[])),
           group: group,
           mediaType: mediaType,
           value: value)
@@ -1358,7 +1359,9 @@ macro genPropParsers(
     of vtUri:
       parseCase[1] = genAst(typeName, contents, pt):
         p.validateType(params, pt)
-        contents.add(ac(typeName(value: p.readValue)))
+        contents.add(ac(typeName(
+          mediaType: params.getSingleValue("MEDIATYPE"),
+          value: p.readValue)))
 
     else:
       raise newException(ValueError, "parse statements for for " & $pn &
