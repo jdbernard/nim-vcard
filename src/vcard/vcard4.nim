@@ -171,6 +171,16 @@ const supportedParams: Table[string, HashSet[VC4_PropertyName]] = [
     pnTz, pnGeo, pnTitle, pnRole, pnLogo, pnOrg, pnRelated, pnCategories,
     pnNote, pnSound, pnUrl, pnKey, pnFburl, pnCaladrUri, pnCalUri ].toHashSet),
 
+  ("CALSCALE", @[pnBday, pnAnniversary].toHashSet),
+
+  ("SORT-AS", @[pnN, pnOrg].toHashSet),
+
+  ("GEO", @[pnAdr].toHashSet),
+
+  ("TZ", @[pnAdr].toHashSet),
+
+  ("LABEL", @[pnAdr].toHashSet),
+
 ].toTable
 
 const TIMESTAMP_FORMATS = [
@@ -483,6 +493,29 @@ func parsePidValues(param: VC_Param): seq[PidValue]
 
 template validateType(p: VCardParser, params: seq[VC_Param], t: VC4_ValueType) =
   p.validateRequiredParameters(params, [("VALUE", $t)])
+
+proc validateParamApplicability(
+    p: VCardParser,
+    name: string,
+    params: seq[VC_Param]
+  ) =
+
+  let pn = parseEnum[VC4_PropertyName](name, pnUnknown)
+  if pn == pnUnknown:
+    return
+
+  let valueType = params.getSingleValue("VALUE")
+  for param in params:
+    let pname = param.name.toUpper
+
+    if pname == "VALUE" or pname == "ALTID":
+      continue
+
+    if supportedParams.contains(pname) and not supportedParams[pname].contains(pn):
+      p.error("parameter '$1' is not allowed on property '$2'" % [pname, name])
+
+    if pname == "CALSCALE" and valueType.isSome and valueType.get == $vtText:
+      p.error("parameter 'CALSCALE' is not allowed when VALUE=text")
 
 func cmp[T: VC4_Property](x, y: T): int =
   return cmp(x.pref, y.pref)
@@ -1629,6 +1662,7 @@ proc parseContentLines*(p: var VCardParser): seq[VC4_Property] =
       p.expect("4.0")
       sawVersion = true
     else:
+      p.validateParamApplicability(name, params)
       genPropParsers(fixedValueTypeProperties, group, name, params, result, p)
 
     p.expect(CRLF)
