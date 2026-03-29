@@ -184,10 +184,10 @@ const supportedParams: Table[string, HashSet[VC4_PropertyName]] = [
 ].toTable
 
 const TIMESTAMP_FORMATS = [
-  "yyyyMMdd'T'hhmmssZZZ",
-  "yyyyMMdd'T'hhmmssZZ",
-  "yyyyMMdd'T'hhmmssZ",
-  "yyyyMMdd'T'hhmmss"
+  "yyyyMMdd'T'HHmmssZZZ",
+  "yyyyMMdd'T'HHmmssZZ",
+  "yyyyMMdd'T'HHmmssZ",
+  "yyyyMMdd'T'HHmmss"
 ]
 
 const TEXT_CHARS = WSP + NON_ASCII + { '\x21'..'\x2B', '\x2D'..'\x7E' }
@@ -472,7 +472,7 @@ proc parseDateAndOrTime[T](
 
 proc parseTimestamp(value: string): DateTime =
   for fmt in TIMESTAMP_FORMATS:
-    try: return value.parse(fmt)
+    try: return value.parse(fmt, utc())
     except: discard
   raise newException(VCardParsingError, "unable to parse timestamp value: " & value)
 
