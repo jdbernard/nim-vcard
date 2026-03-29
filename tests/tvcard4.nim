@@ -236,6 +236,24 @@ suite "vcard/vcard4":
       label.len == 1
       label[0].values == @["^top\nsecond line"]
 
+  test "spec: RFC 6868 unknown escapes pass through in unquoted parameter values":
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN;X-TEST=alpha^xbeta:John Smith"))
+    let param = parsed.fn[0].params --> find(it.name == "X-TEST")
+    check:
+      param.isSome
+      param.get.values == @["alpha^xbeta"]
+
+  test "spec: RFC 6868 unknown escapes pass through in quoted parameter values":
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN;X-TEST=\"alpha^xbeta\":John Smith"))
+    let param = parsed.fn[0].params --> find(it.name == "X-TEST")
+    check:
+      param.isSome
+      param.get.values == @["alpha^xbeta"]
+
   test "Data URIs are parsed correctly":
     let expectedB64 = readFile("tests/allen.foster.jpg.uri")
 
