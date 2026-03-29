@@ -677,7 +677,8 @@ macro genTextOrUriPropInitializers(
           params: flattenParameters(params,
             ("ALTID", if altId.isSome: @[altId.get] else: @[])),
           isUrl: isUrl,
-          group: group)
+          group: group,
+          value: value)
 
     addConditionalParams(prop, funcDef)
     result.add(funcDef)
