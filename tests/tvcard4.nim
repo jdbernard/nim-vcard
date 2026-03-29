@@ -146,6 +146,45 @@ suite "vcard/vcard4":
       parsed.email.len == 1
       parsed.email[0].pid == @[PidValue(propertyId: 1, sourceId: 7)]
 
+  test "spec: ADR supports structured list components":
+    check compiles(newVC4_Adr(street = @["123 Main St", "Unit 5"]))
+
+    when compiles(newVC4_Adr(street = @["123 Main St", "Unit 5"])):
+      let adr = newVC4_Adr(
+        street = @["123 Main St", "Unit 5"],
+        locality = @["Springfield"],
+        region = @["IL"],
+        postalCode = @["01111"],
+        country = @["USA"])
+
+      check serialize(adr) == "ADR:;;123 Main St,Unit 5;Springfield;IL;01111;USA"
+
+      let parsed = parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "ADR:;;123 Main St,Unit 5;Springfield;IL;01111;USA"))
+      check:
+        parsed.adr.len == 1
+        parsed.adr[0].street == @["123 Main St", "Unit 5"]
+        parsed.adr[0].locality == @["Springfield"]
+        parsed.adr[0].region == @["IL"]
+        parsed.adr[0].postalCode == @["01111"]
+        parsed.adr[0].country == @["USA"]
+        serialize(parsed.adr[0]) == "ADR:;;123 Main St,Unit 5;Springfield;IL;01111;USA"
+
+  test "spec: ADR escapes special characters in component values":
+    let adr = newVC4_Adr(
+      poBox = "Box, 7",
+      ext = "Suite; 9",
+      street = "123 Main St",
+      locality = "Montreal\nWest",
+      region = "QC\\CA",
+      postalCode = "H2Y 1C6",
+      country = "Canada")
+    check:
+      serialize(adr) ==
+        r"ADR:Box\, 7;Suite\; 9;123 Main St;Montreal\nWest;QC\\CA;H2Y 1C6;Canada"
+
   test "can parse properties with escaped characters":
     check v4Ex.note.len == 1
     let note = v4Ex.note[0]
