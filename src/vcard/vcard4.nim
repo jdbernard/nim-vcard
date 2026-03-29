@@ -1342,6 +1342,19 @@ macro genPropParsers(
           if valueType.isSome and valueType.get != $vtLanguageTag:
             p.error("parameter 'VALUE' must have the value '" & $vtLanguageTag & "'")
           contents.add(ac(typeName(value: p.readTextValue)))
+      elif pn == pnTz:
+        parseCase[1] = genAst(contents, typeName, p):
+          let valueType = params.getSingleValue("VALUE")
+          if valueType.isSome and
+             valueType.get notin [$vtText, $vtUri, $vtUtcOffset]:
+            p.error("parameter 'VALUE' must be one of 'text', 'uri', or 'utc-offset'")
+
+          contents.add(ac(typeName(
+            value:
+              if valueType.isSome and valueType.get in [$vtUri, $vtUtcOffset]:
+                p.readValue
+              else:
+                p.readTextValue)))
       else:
         parseCase[1] = genAst(contents, typeName, pt):
           p.validateType(params, pt)
