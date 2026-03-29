@@ -1120,7 +1120,7 @@ func serializeValue(value: string): string =
     [(",", "\\,"), (";", "\\;"), ("\\", "\\\\"),("\n", "\\n")])
 
 func serialize*(n: VC4_N): string =
-  result = "N" & serialize(n.params) & ":" &
+  result = n.nameWithGroup & serialize(n.params) & ":" &
     (n.family --> map(serializeValue(it))).join(",") & ";" &
     (n.given --> map(serializeValue(it))).join(",") & ";" &
     (n.additional --> map(serializeValue(it))).join(",") & ";" &
@@ -1128,21 +1128,21 @@ func serialize*(n: VC4_N): string =
     (n.suffixes --> map(serializeValue(it))).join(",")
 
 func serialize*(a: VC4_Adr): string =
-  result = "ADR" & serialize(a.params) & ":" &
+  result = a.nameWithGroup & serialize(a.params) & ":" &
     a.poBox & ";" & a.ext & ";" & a.street & ";" & a.locality & ";" &
     a.region & ";" & a.postalCode & ";" & a.country
 
 func serialize*(g: VC4_Gender): string =
-  result = "GENDER" & serialize(g.params) & ":"
+  result = g.nameWithGroup & serialize(g.params) & ":"
   if g.sex.isSome: result &= $g.sex.get
   if g.genderIdentity.isSome: result &= ";" & g.genderIdentity.get
 
 func serialize*(r: VC4_Rev): string =
-  result = "REV" & serialize(r.params) &
+  result = r.nameWithGroup & serialize(r.params) &
     ":" & r.value.format(TIMESTAMP_FORMATS[0])
 
 func serialize*(c: VC4_ClientPidMap): string =
-  result = "CLIENTPIDMAP" & serialize(c.params) & ":" & $c.id & ";" & c.uri
+  result = c.nameWithGroup & serialize(c.params) & ":" & $c.id & ";" & c.uri
 
 genSerializers(fixedValueTypeProperties.toSeq & @[(pnUnknown, vtText)])
 genGenericSerializer(toSeq(VC4_PropertyName))
