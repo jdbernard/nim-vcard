@@ -136,7 +136,6 @@ const fixedValueTypeProperties = [
   (pnTitle, vtText),
   (pnRole, vtText),
   (pnLogo, vtUri),
-  (pnOrg, vtText),
   (pnMember, vtUri),
   (pnRelated, vtTextOrUri),
   (pnCategories, vtTextList),
@@ -333,6 +332,9 @@ type
   VC4_Gender* = ref object of VC4_Property
     sex*: Option[VC4_Sex]
     genderIdentity*: Option[string]
+
+  VC4_Org* = ref object of VC4_Property
+    value*: seq[string]
 
   VC4_Adr* = ref object of VC4_Property
     poBox*: seq[string]
@@ -759,6 +761,48 @@ func newVC4_Gender*(
       ("ALTID", if altId.isSome: @[altId.get] else: @[]))),
     sex, genderIdentity, group)
 
+func newVC4_Org*(
+    value: seq[string],
+    altId: Option[string] = none[string](),
+    group: Option[string] = none[string](),
+    language: Option[string] = none[string](),
+    params: seq[VC_Param] = @[],
+    pids: seq[PidValue] = @[],
+    pref: Option[int] = none[int](),
+    types: seq[string] = @[]): VC4_Org =
+
+  if pref.isSome and (pref.get < 1 or pref.get > 100):
+    raise newException(ValueError, "PREF must be an integer between 1 and 100")
+
+  return assignFields(
+    VC4_Org(params: flattenParameters(params,
+      ("ALTID", if altId.isSome: @[altId.get] else: @[]),
+      ("LANGUAGE", if language.isSome: @[language.get] else: @[]),
+      ("PID", pids --> map($it)),
+      ("PREF", if pref.isSome: @[$pref.get] else: @[]),
+      ("TYPE", types))),
+    value, group)
+
+func newVC4_Org*(
+    value: string,
+    altId: Option[string] = none[string](),
+    group: Option[string] = none[string](),
+    language: Option[string] = none[string](),
+    params: seq[VC_Param] = @[],
+    pids: seq[PidValue] = @[],
+    pref: Option[int] = none[int](),
+    types: seq[string] = @[]): VC4_Org =
+
+  return newVC4_Org(
+    value = asComponentList(value),
+    altId = altId,
+    group = group,
+    language = language,
+    params = params,
+    pids = pids,
+    pref = pref,
+    types = types)
+
 func newVC4_Adr*(
     poBox: seq[string] = @[],
     ext: seq[string] = @[],
@@ -1178,6 +1222,10 @@ func serialize*(n: VC4_N): string =
     (n.prefixes --> map(serializeValue(it))).join(",") & ";" &
     (n.suffixes --> map(serializeValue(it))).join(",")
 
+func serialize*(o: VC4_Org): string =
+  result = o.nameWithGroup & serialize(o.params) & ":" &
+    (o.value --> map(serializeValue(it))).join(";")
+
 func serialize*(a: VC4_Adr): string =
   result = a.nameWithGroup & serialize(a.params) & ":" &
     serializeComponentList(a.poBox) & ";" &
@@ -1485,6 +1533,14 @@ macro genPropParsers(
         region: p.readComponentValueList(requiredPrefix = some(';')),
         postalCode: p.readComponentValueList(requiredPrefix = some(';')),
         country: p.readComponentValueList(requiredPrefix = some(';')))))
+
+  block:  # ORG
+    let parseCase = nnkOfBranch.newTree(ident("pnOrg"), newEmptyNode())
+    result.add(parseCase)
+    parseCase[1] = genAst(contents):
+      p.validateType(params, vtText)
+      contents.add(ac(VC4_Org(
+        value: p.readComponentValueList(seps = {';'}))))
 
   block: # REV
     let parseCase = nnkOfBranch.newTree(ident("pnRev"), newEmptyNode())
