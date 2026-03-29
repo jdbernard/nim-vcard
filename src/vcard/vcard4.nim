@@ -1074,8 +1074,7 @@ macro genSerializers(
     of vtTextList:
       let funcDef = genAstOpt({kDirtyTemplate}, enumName, typeName):
         func serialize*(p: typeName): string =
-          result = p.nameWithGroup & serialize(p.params) &
-            serialize(p.params) & ":" &
+          result = p.nameWithGroup & serialize(p.params) & ":" &
             (p.value --> map(serializeValue(it))).join(",")
       result.add(funcDef)
 
