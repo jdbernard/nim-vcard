@@ -185,6 +185,32 @@ suite "vcard/vcard4":
       serialize(adr) ==
         r"ADR:Box\, 7;Suite\; 9;123 Main St;Montreal\nWest;QC\\CA;H2Y 1C6;Canada"
 
+  test "spec: ORG supports multiple organization units":
+    check compiles(newVC4_Org(
+      value = @["ABC, Inc.", "North American Division", "Marketing"]))
+
+    when compiles(newVC4_Org(
+        value = @["ABC, Inc.", "North American Division", "Marketing"])):
+      let org = newVC4_Org(
+        value = @["ABC, Inc.", "North American Division", "Marketing"])
+      check serialize(org) == "ORG:ABC\\, Inc.;North American Division;Marketing"
+
+      let parsed = parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "ORG:ABC\\, Inc.;North American Division;Marketing"))
+      check:
+        parsed.org.len == 1
+        parsed.org[0].value == @["ABC, Inc.", "North American Division", "Marketing"]
+        serialize(parsed.org[0]) == "ORG:ABC\\, Inc.;North American Division;Marketing"
+
+  test "spec: ORG round-trips structured input without escaping separators":
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN:John Smith",
+      "ORG:ABC\\, Inc.;North American Division;Marketing"))
+    check serialize(parsed.org[0]) == "ORG:ABC\\, Inc.;North American Division;Marketing"
+
   test "can parse properties with escaped characters":
     check v4Ex.note.len == 1
     let note = v4Ex.note[0]
