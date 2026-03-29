@@ -569,11 +569,27 @@ suite "vcard/vcard4":
       v4Ex.gender.get.sex == some(VC4_Sex.Male)
       v4Ex.gender.get.genderIdentity == some("male")
 
-#[
-  test "CATEGORIES is parsed correctly":
   test "REV is parsed correctly":
+    check:
+      v4Ex.rev.isSome
+      v4Ex.rev.get.value.year == 2022
+      v4Ex.rev.get.value.month == mFeb
+      v4Ex.rev.get.value.monthday == 26
+      v4Ex.rev.get.value.hour == 6
+      v4Ex.rev.get.value.minute == 8
+      v4Ex.rev.get.value.second == 28
+
   test "CLIENTPIDMAP is parsed correctly":
-]#
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN:John Smith",
+      "EMAIL;PID=1.1:test@example.com",
+      "CLIENTPIDMAP:1;urn:uuid:device-1"))
+    check:
+      parsed.clientpidmap.len == 1
+      parsed.clientpidmap[0].id == 1
+      parsed.clientpidmap[0].uri == "urn:uuid:device-1"
+      serialize(parsed.clientpidmap[0]) == "CLIENTPIDMAP:1;urn:uuid:device-1"
 
   test "unknown properties are parsed correctly":
 
