@@ -1293,7 +1293,10 @@ proc readParamValue(p: var VCardParser): string =
         result.add('"')
         discard p.read
       else:
-        p.error("invalid character escape: '^$1'" % [$p.read])
+        result.add('^')
+        if (quoted and QSAFE_CHARS.contains(p.peek)) or
+           (not quoted and SAFE_CHARS.contains(p.peek)):
+          result.add(p.read)
     else: result.add(c)
 
   if quoted and p.read != '"':
