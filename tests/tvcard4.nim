@@ -325,6 +325,21 @@ suite "vcard/vcard4":
         parsed.anniversary.isSome
         parsed.anniversary.get.calscale == some("gregorian")
 
+  test "spec: typed BDAY and ANNIVERSARY constructors support reduced-precision values":
+    let bday = newVC4_Bday(month = some(12), day = some(24))
+    let anniversary = newVC4_Anniversary(year = some(2014), month = some(6))
+    check:
+      bday.value == "--1224"
+      bday.year.isNone
+      bday.month == some(12)
+      bday.day == some(24)
+      serialize(bday) == "BDAY:--1224"
+      anniversary.value == "201406"
+      anniversary.year == some(2014)
+      anniversary.month == some(6)
+      anniversary.day.isNone
+      serialize(anniversary) == "ANNIVERSARY:201406"
+
   test "spec: unsupported standard parameters are rejected on known properties":
     expect(VCardParsingError):
       discard parseSingleVCard4(vcard4Doc(

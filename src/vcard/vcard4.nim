@@ -405,6 +405,80 @@ func normalizeStructuredParamValues(values: seq[string]): seq[string] =
   else:
     values
 
+func padInt(value, width: int): string =
+  ($value).align(width, '0')
+
+func formatTypedDateAndOrTimeValue(
+    year: Option[int] = none[int](),
+    month: Option[int] = none[int](),
+    day: Option[int] = none[int](),
+    hour: Option[int] = none[int](),
+    minute: Option[int] = none[int](),
+    second: Option[int] = none[int](),
+    timezone: Option[string] = none[string]()
+  ): string =
+
+  if year.isSome and year.get < 0:
+    raise newException(ValueError, "year must be non-negative")
+  if month.isSome and (month.get < 1 or month.get > 12):
+    raise newException(ValueError, "month must be between 1 and 12")
+  if day.isSome and (day.get < 1 or day.get > 31):
+    raise newException(ValueError, "day must be between 1 and 31")
+  if hour.isSome and (hour.get < 0 or hour.get > 23):
+    raise newException(ValueError, "hour must be between 0 and 23")
+  if minute.isSome and (minute.get < 0 or minute.get > 59):
+    raise newException(ValueError, "minute must be between 0 and 59")
+  if second.isSome and (second.get < 0 or second.get > 59):
+    raise newException(ValueError, "second must be between 0 and 59")
+  if timezone.isSome and
+     not (timezone.get == "Z" or
+          (timezone.get.len == 5 and
+           {'+', '-'}.contains(timezone.get[0]) and
+           timezone.get[1..^1].allCharsInSet(DIGIT))):
+    raise newException(ValueError,
+      "timezone must be 'Z' or an RFC 6350 numeric UTC offset")
+
+  let hasDate = year.isSome or month.isSome or day.isSome
+  let hasTime = hour.isSome or minute.isSome or second.isSome or timezone.isSome
+  if not hasDate and not hasTime:
+    raise newException(ValueError,
+      "at least one date-and-or-time component must be provided")
+  if timezone.isSome and second.isNone:
+    raise newException(ValueError,
+      "timezone requires a second component for RFC 6350 date-and-or-time values")
+
+  if year.isSome:
+    result &= padInt(year.get, 4)
+  elif month.isSome or day.isSome:
+    result &= "--"
+
+  if month.isSome:
+    result &= padInt(month.get, 2)
+  elif day.isSome:
+    result &= "-"
+
+  if day.isSome:
+    result &= padInt(day.get, 2)
+
+  if hasTime:
+    result &= "T"
+
+    if hour.isSome:
+      result &= padInt(hour.get, 2)
+    elif minute.isSome or second.isSome or timezone.isSome:
+      result &= "-"
+
+    if minute.isSome:
+      result &= padInt(minute.get, 2)
+    elif second.isSome or timezone.isSome:
+      result &= "-"
+
+    if second.isSome:
+      result &= padInt(second.get, 2)
+
+    if timezone.isSome:
+      result &= timezone.get
+
 proc parseDateAndOrTime[T](
     prop: var T,
     value: string
@@ -776,6 +850,60 @@ genTextOrUriPropInitializers(fixedValueTypeProperties -->
 
 genUriPropInitializers(fixedValueTypeProperties -->
   filter(it[1] == vtUri).map(it[0]))
+
+proc newVC4_Bday*(
+    year: Option[int] = none[int](),
+    month: Option[int] = none[int](),
+    day: Option[int] = none[int](),
+    hour: Option[int] = none[int](),
+    minute: Option[int] = none[int](),
+    second: Option[int] = none[int](),
+    timezone: Option[string] = none[string](),
+    calscale: Option[string] = none[string](),
+    altId: Option[string] = none[string](),
+    group: Option[string] = none[string](),
+    params: seq[VC_Param] = @[]): VC4_Bday =
+
+  return newVC4_Bday(
+    value = formatTypedDateAndOrTimeValue(
+      year = year,
+      month = month,
+      day = day,
+      hour = hour,
+      minute = minute,
+      second = second,
+      timezone = timezone),
+    calscale = calscale,
+    altId = altId,
+    group = group,
+    params = params)
+
+proc newVC4_Anniversary*(
+    year: Option[int] = none[int](),
+    month: Option[int] = none[int](),
+    day: Option[int] = none[int](),
+    hour: Option[int] = none[int](),
+    minute: Option[int] = none[int](),
+    second: Option[int] = none[int](),
+    timezone: Option[string] = none[string](),
+    calscale: Option[string] = none[string](),
+    altId: Option[string] = none[string](),
+    group: Option[string] = none[string](),
+    params: seq[VC_Param] = @[]): VC4_Anniversary =
+
+  return newVC4_Anniversary(
+    value = formatTypedDateAndOrTimeValue(
+      year = year,
+      month = month,
+      day = day,
+      hour = hour,
+      minute = minute,
+      second = second,
+      timezone = timezone),
+    calscale = calscale,
+    altId = altId,
+    group = group,
+    params = params)
 
 func newVC4_N*(
     family: seq[string] = @[],
