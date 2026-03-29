@@ -27,7 +27,7 @@ proc add*[T](vc: VCard, content: varargs[T]): void =
   if vc.parsedVersion == VCardV3: add(cast[VCard3](vc), content)
   else: add(cast[VCard4](vc), content)
 
-proc readVCard*(p: var VCardParser): VCard =
+proc readVCard*(p: var VCardParser, validate = true): VCard =
   # Read the preamble
   discard p.readGroup
   p.expect("begin:vcard" & CRLF)
@@ -55,13 +55,14 @@ proc readVCard*(p: var VCardParser): VCard =
   if result.parsedVersion == VCardV3:
     while (p.skip(CRLF, true)): discard
 
-  try:
-    if result.parsedVersion == VCardV3:
-      cast[VCard3](result).validate()
-    else:
-      cast[VCard4](result).validate()
-  except ValueError as exc:
-    p.error(exc.msg)
+  if validate:
+    try:
+      if result.parsedVersion == VCardV3:
+        cast[VCard3](result).validate()
+      else:
+        cast[VCard4](result).validate()
+    except ValueError as exc:
+      p.error(exc.msg)
 
 proc initVCardParser*(input: Stream, filename = "input"): VCardParser =
   result.filename = filename
@@ -73,12 +74,12 @@ proc initVCardParser*(content: string, filename = "input"): VCardParser =
 proc initVCardParserFromFile*(filepath: string): VCardParser =
   initVCardParser(newFileStream(filepath, fmRead), filepath)
 
-proc parseVCards*(input: Stream, filename = "input"): seq[VCard] =
+proc parseVCards*(input: Stream, filename = "input", validate = true): seq[VCard] =
   var p = initVCardParser(input, filename)
-  while p.peek != '\0': result.add(p.readVCard)
+  while p.peek != '\0': result.add(p.readVCard(validate))
 
-proc parseVCards*(content: string, filename = "input"): seq[VCard] =
-  parseVCards(newStringStream(content), filename)
+proc parseVCards*(content: string, filename = "input", validate = true): seq[VCard] =
+  parseVCards(newStringStream(content), filename, validate)
 
-proc parseVCardsFromFile*(filepath: string): seq[VCard] =
-  parseVCards(newFileStream(filepath, fmRead), filepath)
+proc parseVCardsFromFile*(filepath: string, validate = true): seq[VCard] =
+  parseVCards(newFileStream(filepath, fmRead), filepath, validate)
