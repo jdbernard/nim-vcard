@@ -65,17 +65,27 @@ proc readVCard*(p: var VCardParser, validate = true): VCard =
       p.error(exc.msg)
 
 proc initVCardParser*(input: Stream, filename = "input"): VCardParser =
+  ## Note: the returned VCardParser object will have an open file handle. Make
+  ## sure to call `close` on the returned VCardParser to avoid file handle
+  ## leaks.
   result.filename = filename
   lexer.open(result, input)
 
 proc initVCardParser*(content: string, filename = "input"): VCardParser =
+  ## Note: the returned VCardParser object will have an open file handle. Make
+  ## sure to call `close` on the returned VCardParser to avoid file handle
+  ## leaks.
   initVCardParser(newStringStream(content), filename)
 
 proc initVCardParserFromFile*(filepath: string): VCardParser =
+  ## Note: the returned VCardParser object will have an open file handle. Make
+  ## sure to call `close` on the returned VCardParser to avoid file handle
+  ## leaks.
   initVCardParser(newFileStream(filepath, fmRead), filepath)
 
 proc parseVCards*(input: Stream, filename = "input", validate = true): seq[VCard] =
   var p = initVCardParser(input, filename)
+  defer: p.close()
   while p.peek != '\0': result.add(p.readVCard(validate))
 
 proc parseVCards*(content: string, filename = "input", validate = true): seq[VCard] =
