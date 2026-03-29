@@ -185,6 +185,54 @@ suite "vcard/vcard4":
       serialize(adr) ==
         r"ADR:Box\, 7;Suite\; 9;123 Main St;Montreal\nWest;QC\\CA;H2Y 1C6;Canada"
 
+  test "spec: ADR constructors serialize GEO, TZ, and LABEL parameters":
+    let adr = newVC4_Adr(
+      street = "123 Main St",
+      geo = some("geo:46.772673,-71.282945"),
+      label = some("123 Main St., Suite 100"),
+      tz = some("America/Chicago"))
+    let serialized = serialize(adr)
+    check:
+      serialized.startsWith("ADR;")
+      serialized.contains("GEO=\"geo:46.772673,-71.282945\"")
+      serialized.contains("LABEL=\"123 Main St., Suite 100\"")
+      serialized.contains("TZ=America/Chicago")
+      serialized.endsWith(":;;123 Main St;;;;")
+
+  test "spec: ADR exposes GEO, TZ, and LABEL through typed accessors":
+    check compiles((block:
+      let parsed = parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "ADR;GEO=\"geo:46.772673,-71.282945\";" &
+          "LABEL=\"123 Main St., Suite 100\";TZ=America/Chicago:" &
+          ";;123 Main St;Springfield;IL;01111;USA"))
+      parsed.adr[0].geo))
+
+    when compiles((block:
+        let parsed = parseSingleVCard4(vcard4Doc(
+          "VERSION:4.0",
+          "FN:John Smith",
+          "ADR;GEO=\"geo:46.772673,-71.282945\";" &
+            "LABEL=\"123 Main St., Suite 100\";TZ=America/Chicago:" &
+            ";;123 Main St;Springfield;IL;01111;USA"))
+        parsed.adr[0].geo)):
+      let parsed = parseSingleVCard4(vcard4Doc(
+        "VERSION:4.0",
+        "FN:John Smith",
+        "ADR;GEO=\"geo:46.772673,-71.282945\";" &
+          "LABEL=\"123 Main St., Suite 100\";TZ=America/Chicago:" &
+          ";;123 Main St;Springfield;IL;01111;USA"))
+      check:
+        parsed.adr.len == 1
+        parsed.adr[0].geo == some("geo:46.772673,-71.282945")
+        parsed.adr[0].label == some("123 Main St., Suite 100")
+        parsed.adr[0].tz == some("America/Chicago")
+        serialize(parsed.adr[0]) ==
+          "ADR;GEO=\"geo:46.772673,-71.282945\";" &
+          "LABEL=\"123 Main St., Suite 100\";TZ=America/Chicago:" &
+          ";;123 Main St;Springfield;IL;01111;USA"
+
   test "spec: ORG supports multiple organization units":
     check compiles(newVC4_Org(
       value = @["ABC, Inc.", "North American Division", "Marketing"]))
