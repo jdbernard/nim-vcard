@@ -1186,6 +1186,49 @@ func validate*(vc4: VCard4): void =
     of vpcAny:
       discard
 
+  if vc4.member.len > 0:
+    if vc4.kind.isNone or vc4.kind.get.value.toLowerAscii != "group":
+      raise newException(ValueError,
+        "MEMBER properties require the KIND property to be set to 'group'")
+
+  var clientPidMaps = initTable[int, string]()
+  for clientPidMap in vc4.clientpidmap:
+    if clientPidMap.id <= 0:
+      raise newException(ValueError,
+        "CLIENTPIDMAP identifiers must be positive integers")
+    if clientPidMaps.contains(clientPidMap.id):
+      raise newException(ValueError,
+        "CLIENTPIDMAP identifier $# appears more than once" % [$clientPidMap.id])
+    clientPidMaps[clientPidMap.id] = clientPidMap.uri
+
+  var referencedSourceIds = initHashSet[int]()
+  for prop in vc4.content:
+    var pidParam = none[VC_Param]()
+    for param in prop.params:
+      if param.name == "PID":
+        pidParam = some(param)
+        break
+    if pidParam.isNone:
+      continue
+
+    let pidValues =
+      try:
+        parsePidValues(pidParam.get)
+      except VCardParsingError as exc:
+        raise newException(ValueError, exc.msg)
+
+    for pidValue in pidValues:
+      if pidValue.propertyId <= 0 or pidValue.sourceId <= 0:
+        raise newException(ValueError,
+          "PID identifiers must be positive integers")
+      referencedSourceIds.incl(pidValue.sourceId)
+
+  for sourceId in referencedSourceIds:
+    if not clientPidMaps.contains(sourceId):
+      raise newException(ValueError,
+        "PID source identifier $# is missing a matching CLIENTPIDMAP" %
+          [$sourceId])
+
 # Setters
 # =============================================================================
 

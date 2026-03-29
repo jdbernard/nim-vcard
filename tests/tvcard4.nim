@@ -141,7 +141,8 @@ suite "vcard/vcard4":
     let parsed = parseSingleVCard4(vcard4Doc(
       "VERSION:4.0",
       "FN:John Smith",
-      "EMAIL;PID=1.7:test@example.com"))
+      "EMAIL;PID=1.7:test@example.com",
+      "CLIENTPIDMAP:7;urn:uuid:device-7"))
     check:
       parsed.email.len == 1
       parsed.email[0].pid == @[PidValue(propertyId: 1, sourceId: 7)]
