@@ -1336,9 +1336,16 @@ macro genPropParsers(
           params = params))
 
     of vtText:
-      parseCase[1] = genAst(contents, typeName, pt):
-        p.validateType(params, pt)
-        contents.add(ac(typeName(value: p.readTextValue)))
+      if pn == pnLang:
+        parseCase[1] = genAst(contents, typeName, p):
+          let valueType = params.getSingleValue("VALUE")
+          if valueType.isSome and valueType.get != $vtLanguageTag:
+            p.error("parameter 'VALUE' must have the value '" & $vtLanguageTag & "'")
+          contents.add(ac(typeName(value: p.readTextValue)))
+      else:
+        parseCase[1] = genAst(contents, typeName, pt):
+          p.validateType(params, pt)
+          contents.add(ac(typeName(value: p.readTextValue)))
 
     of vtTextList:
       parseCase[1] = genAst(contents, typeName):
