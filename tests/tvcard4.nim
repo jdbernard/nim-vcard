@@ -200,6 +200,39 @@ suite "vcard/vcard4":
     let src = newVC4_Source(value="https://carddav.example.test/john-smith.vcf")
     check serialize(src) == "SOURCE:https://carddav.example.test/john-smith.vcf"
 
+  test "spec: LANG supports explicit VALUE=language-tag":
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN:John Smith",
+      "LANG;VALUE=language-tag;PREF=1:en-US"))
+    check:
+      parsed.lang.len == 1
+      parsed.lang[0].value == "en-US"
+      parsed.lang[0].valueType == some("language-tag")
+      serialize(parsed.lang[0]) == "LANG;VALUE=language-tag;PREF=1:en-US"
+
+  test "spec: TZ supports VALUE=utc-offset":
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN:John Smith",
+      "TZ;VALUE=utc-offset:-0500"))
+    check:
+      parsed.tz.len == 1
+      parsed.tz[0].value == "-0500"
+      parsed.tz[0].valueType == some("utc-offset")
+      serialize(parsed.tz[0]) == "TZ;VALUE=utc-offset:-0500"
+
+  test "spec: TZ supports VALUE=uri":
+    let parsed = parseSingleVCard4(vcard4Doc(
+      "VERSION:4.0",
+      "FN:John Smith",
+      "TZ;VALUE=uri:https://example.com/tz/America-Chicago"))
+    check:
+      parsed.tz.len == 1
+      parsed.tz[0].value == "https://example.com/tz/America-Chicago"
+      parsed.tz[0].valueType == some("uri")
+      serialize(parsed.tz[0]) == "TZ;VALUE=uri:https://example.com/tz/America-Chicago"
+
   test "Single-text properties are parsed correctly":
     # Covers KIND, XML, FN, NICKNAME, EMAIL, LANG, TZ, TITLE, ROLE, ORG, NOTE,
     # PRODID, and VERSION
