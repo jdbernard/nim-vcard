@@ -335,13 +335,13 @@ type
     genderIdentity*: Option[string]
 
   VC4_Adr* = ref object of VC4_Property
-    poBox*: string
-    ext*: string
-    street*: string
-    locality*: string
-    region*: string
-    postalCode*: string
-    country*: string
+    poBox*: seq[string]
+    ext*: seq[string]
+    street*: seq[string]
+    locality*: seq[string]
+    region*: seq[string]
+    postalCode*: seq[string]
+    country*: seq[string]
 
   VC4_ClientPidMap* = ref object of VC4_Property
     id*: int
@@ -380,6 +380,12 @@ func flattenParameters(
 
   result = @[]
   for k, v in paramTable.pairs: result.add((k, v))
+
+func asComponentList(value: string): seq[string] =
+  if value.len > 0:
+    @[value]
+  else:
+    @[]
 
 proc parseDateAndOrTime[T](
     prop: var T,
@@ -754,13 +760,13 @@ func newVC4_Gender*(
     sex, genderIdentity, group)
 
 func newVC4_Adr*(
-    poBox = "",
-    ext = "",
-    street = "",
-    locality = "",
-    region = "",
-    postalCode = "",
-    country = "",
+    poBox: seq[string] = @[],
+    ext: seq[string] = @[],
+    street: seq[string] = @[],
+    locality: seq[string] = @[],
+    region: seq[string] = @[],
+    postalCode: seq[string] = @[],
+    country: seq[string] = @[],
     altId: Option[string] = none[string](),
     geo: Option[string] = none[string](),
     group: Option[string] = none[string](),
@@ -786,6 +792,44 @@ func newVC4_Adr*(
       ("TYPE", types),
       ("TZ", if tz.isSome: @[tz.get] else: @[]))),
     poBox, ext, street, locality, region, postalCode, country, group)
+
+func newVC4_Adr*(
+    poBox = "",
+    ext = "",
+    street = "",
+    locality = "",
+    region = "",
+    postalCode = "",
+    country = "",
+    altId: Option[string] = none[string](),
+    geo: Option[string] = none[string](),
+    group: Option[string] = none[string](),
+    label: Option[string] = none[string](),
+    language: Option[string] = none[string](),
+    params: seq[VC_Param] = @[],
+    pids: seq[PidValue] = @[],
+    pref: Option[int] = none[int](),
+    types: seq[string] = @[],
+    tz: Option[string] = none[string]()): VC4_Adr =
+
+  return newVC4_Adr(
+    poBox = asComponentList(poBox),
+    ext = asComponentList(ext),
+    street = asComponentList(street),
+    locality = asComponentList(locality),
+    region = asComponentList(region),
+    postalCode = asComponentList(postalCode),
+    country = asComponentList(country),
+    altId = altId,
+    geo = geo,
+    group = group,
+    label = label,
+    language = language,
+    params = params,
+    pids = pids,
+    pref = pref,
+    types = types,
+    tz = tz)
 
 func newVC4_ClientPidMap*(
     id: int,
@@ -1123,6 +1167,9 @@ func serializeValue(value: string): string =
   result = value.multiReplace(
     [(",", "\\,"), (";", "\\;"), ("\\", "\\\\"),("\n", "\\n")])
 
+func serializeComponentList(values: seq[string]): string =
+  (values --> map(serializeValue(it))).join(",")
+
 func serialize*(n: VC4_N): string =
   result = n.nameWithGroup & serialize(n.params) & ":" &
     (n.family --> map(serializeValue(it))).join(",") & ";" &
@@ -1133,8 +1180,13 @@ func serialize*(n: VC4_N): string =
 
 func serialize*(a: VC4_Adr): string =
   result = a.nameWithGroup & serialize(a.params) & ":" &
-    a.poBox & ";" & a.ext & ";" & a.street & ";" & a.locality & ";" &
-    a.region & ";" & a.postalCode & ";" & a.country
+    serializeComponentList(a.poBox) & ";" &
+    serializeComponentList(a.ext) & ";" &
+    serializeComponentList(a.street) & ";" &
+    serializeComponentList(a.locality) & ";" &
+    serializeComponentList(a.region) & ";" &
+    serializeComponentList(a.postalCode) & ";" &
+    serializeComponentList(a.country)
 
 func serialize*(g: VC4_Gender): string =
   result = g.nameWithGroup & serialize(g.params) & ":"
@@ -1426,13 +1478,13 @@ macro genPropParsers(
     parseCase[1] = genAst(contents):
       p.validateType(params, vtText)
       contents.add(ac(VC4_Adr(
-        poBox: p.readComponentValue,
-        ext: p.readComponentValue(requiredPrefix = some(';')),
-        street: p.readComponentValue(requiredPrefix = some(';')),
-        locality: p.readComponentValue(requiredPrefix = some(';')),
-        region: p.readComponentValue(requiredPrefix = some(';')),
-        postalCode: p.readComponentValue(requiredPrefix = some(';')),
-        country: p.readComponentValue(requiredPrefix = some(';')))))
+        poBox: p.readComponentValueList,
+        ext: p.readComponentValueList(requiredPrefix = some(';')),
+        street: p.readComponentValueList(requiredPrefix = some(';')),
+        locality: p.readComponentValueList(requiredPrefix = some(';')),
+        region: p.readComponentValueList(requiredPrefix = some(';')),
+        postalCode: p.readComponentValueList(requiredPrefix = some(';')),
+        country: p.readComponentValueList(requiredPrefix = some(';')))))
 
   block: # REV
     let parseCase = nnkOfBranch.newTree(ident("pnRev"), newEmptyNode())
